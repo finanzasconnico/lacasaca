@@ -309,7 +309,8 @@ nav.tabs button.on{color:var(--grass)}
 // Misma base y mismas cuentas que Fueguitos: el apodo y el PIN sirven para las dos apps.
 const SB_URL = 'https://ngwrtivemyjueiysqqum.supabase.co';
 const SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5nd3J0aXZlbXlqdWVpeXNxcXVtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTAzNDAwNjYsImV4cCI6MjEwNTkxNjA2Nn0._BwHSn4LH2V59jk90e2VS_xO3csW9S_idaxqO81_X3s';
-const BASE = `${location.origin}/`;
+// Funciona tanto en la raíz de su propio dominio como dentro de una carpeta (fueguitos.vercel.app/lacasaca/).
+const BASE = `${location.origin}${location.pathname.replace(/[^/]*$/, '')}`;
 
 /* ============ Utilidades ============ */
 const LS = {
