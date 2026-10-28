@@ -474,7 +474,8 @@ async function loadTeam(){
   if (!teams.find(t => t.id === S.teamId)) S.teamId = teams[0].id;
   LS.set('casaca_team', S.teamId);
   try {
-    const [T, TR] = await Promise.all([rpc('fc_team', { ...P(), p_team: S.teamId }), rpc('fc_trainings_list', { ...P(), p_team: S.teamId }).catch(() => null)]);
+    const [T, TR, RT] = await Promise.all([rpc('fc_team', { ...P(), p_team: S.teamId }), rpc('fc_trainings_list', { ...P(), p_team: S.teamId }).catch(() => null), rpc('fc_routines_list', { ...P(), p_team: S.teamId }).catch(() => [])]);
+    S.RT = RT || [];
     S.T = T; S.TR = TR || { trainings: [], logs: [] };
     S.LG = T.team.league ? await rpc('fc_league', { ...P(), p_team: S.teamId }).catch(() => S.LG) : null;
     LS.set('casaca_lg_' + S.teamId, JSON.stringify(S.LG));
@@ -1255,15 +1256,233 @@ async function sharePizarra(){
   toast('Imagen descargada. Mandala al grupo.');
 }
 
+/* ============ Biblioteca de rutinas ============ */
+// Rutinas de fútbol listas para mandar. Cada ejercicio: n = nombre, d = series y repeticiones, t = consejo, q = búsqueda del video en YouTube.
+const CALOR = { n: 'Entrada en calor', d: '8 min', t: 'Trote suave, skipping, talones a la cola, movilidad de cadera y 3 aceleraciones progresivas.', q: 'entrada en calor futbol dinamica' };
+const ROUTINES = [
+  { id: 'explosividad', emoji: '⚡', name: 'Explosividad de piernas', category: 'Potencia', intensity: 'alta', minutes: 35,
+    notes: 'Calidad antes que cantidad: cada salto al máximo y con la pausa completa. Si algo duele, cortá.',
+    items: [CALOR,
+      { n: 'Sentadilla con salto', d: '4 × 6 · pausa 90 s', t: 'Bajá hasta 90°, saltá lo más alto que puedas y caé suave, con rodillas alineadas.', q: 'sentadilla con salto tecnica' },
+      { n: 'Estocadas con salto alternadas', d: '3 × 8 por pierna', t: 'Cambiá de pierna en el aire. Torso derecho.', q: 'estocadas con salto alternadas' },
+      { n: 'Saltos al cajón o escalón', d: '4 × 5', t: 'Subí con los dos pies y bajá caminando, no saltando.', q: 'box jump tecnica saltos al cajon' },
+      { n: 'Saltos laterales a una pierna (skater)', d: '3 × 8 por lado', t: 'Caé y sostené 1 segundo antes del siguiente.', q: 'skater jumps ejercicio' },
+      { n: 'Salto largo sin impulso', d: '4 × 4', t: 'Brazos atrás, empuje explosivo y caída firme.', q: 'salto largo sin impulso tecnica' },
+      { n: 'Elevación de talones', d: '3 × 15', t: 'Lento al bajar. Podés hacerla en un escalón.', q: 'elevacion de talones pantorrilla' }] },
+  { id: 'piques', emoji: '🏃', name: 'Piques cortos y cambios de dirección', category: 'Velocidad', intensity: 'alta', minutes: 30,
+    notes: 'Cada pique al 100%. La recuperación es caminando: si no llegás fresco al siguiente, alargala.',
+    items: [CALOR,
+      { n: 'Piques de 10 m', d: '8 · pausa 45 s caminando', t: 'Primeros pasos cortos y rápidos, cuerpo inclinado.', q: 'aceleracion 10 metros tecnica futbol' },
+      { n: 'Piques de 20 m', d: '6 · pausa 60 s', t: 'Máxima velocidad al final.', q: 'sprint 20 metros futbol' },
+      { n: 'Ida y vuelta 5-10-5', d: '6 · pausa 60 s', t: 'Bajá el centro de gravedad en cada giro.', q: 'pro agility 5 10 5 drill' },
+      { n: 'Salidas desde distintas posiciones', d: '6 × 10 m', t: 'Sentado, de espaldas, acostado boca abajo: reaccioná y salí.', q: 'salidas de velocidad desde diferentes posiciones futbol' },
+      { n: 'Vuelta a la calma', d: '5 min', t: 'Trote muy suave y estiramientos de piernas.', q: 'vuelta a la calma estiramientos futbol' }] },
+  { id: 'pasadas', emoji: '🔁', name: 'Pasadas (intervalos)', category: 'Resistencia', intensity: 'alta', minutes: 40,
+    notes: 'Es la que más cuesta y la que más se nota el sábado. Ritmo parejo: la última pasada tiene que salir igual que la primera.',
+    items: [CALOR,
+      { n: 'Pasadas de 150 m al 80%', d: '6 · pausa 90 s', t: 'Ritmo fuerte pero sostenible. Volvé caminando.', q: 'pasadas 150 metros entrenamiento futbol' },
+      { n: 'Intermitente 15-15', d: '2 bloques de 8 min · 3 min de pausa', t: '15 s rápido y 15 s trotando, sin parar.', q: 'intermitente 15 15 entrenamiento futbol' },
+      { n: 'Trote suave', d: '5 min', t: 'Para bajar pulsaciones.', q: 'trote regenerativo' }] },
+  { id: 'correr', emoji: '🫁', name: 'Salir a correr', category: 'Resistencia', intensity: 'media', minutes: 40,
+    notes: 'Ritmo de charla: tenés que poder hablar mientras corrés. Mandá la captura del reloj o de la app como prueba.',
+    items: [{ n: 'Trote continuo', d: '35 a 40 min', t: 'Ritmo cómodo y constante.', q: 'como correr a ritmo conversacional' },
+      { n: 'Últimos 5 min un poco más rápido', d: '5 min', t: 'Sin llegar al máximo.', q: 'progresivo running final' },
+      { n: 'Estiramientos', d: '5 min', t: 'Isquios, cuádriceps, gemelos y aductores.', q: 'estiramientos despues de correr' }] },
+  { id: 'fartlek', emoji: '📈', name: 'Fartlek de fútbol', category: 'Resistencia', intensity: 'media', minutes: 35,
+    notes: 'Imita el partido: cambios de ritmo todo el tiempo.',
+    items: [CALOR,
+      { n: 'Cambios de ritmo', d: '30 min', t: 'Repetí: 2 min trote, 1 min rápido, 30 s pique, 30 s caminando.', q: 'fartlek futbol entrenamiento' },
+      { n: 'Estiramientos', d: '5 min', t: '', q: 'estiramientos futbol' }] },
+  { id: 'superior', emoji: '💪', name: 'Tren superior y core', category: 'Fuerza', intensity: 'media', minutes: 30,
+    notes: 'Ideal para el día que las piernas descansan. Se hace en casa, sin máquinas.',
+    items: [{ n: 'Flexiones de brazos', d: '4 × 10 a 15', t: 'Cuerpo recto. Si cuesta, con rodillas apoyadas.', q: 'flexiones de brazos tecnica correcta' },
+      { n: 'Remo con mochila o botellas', d: '4 × 12', t: 'Espalda recta, llevá los codos hacia atrás.', q: 'remo con mochila en casa' },
+      { n: 'Fondos en silla', d: '3 × 10', t: 'Codos hacia atrás, no hacia afuera.', q: 'fondos de triceps en silla' },
+      { n: 'Plancha frontal', d: '3 × 40 s', t: 'Cola alineada, apretá el abdomen.', q: 'plancha abdominal tecnica' },
+      { n: 'Plancha lateral', d: '3 × 30 s por lado', t: '', q: 'plancha lateral tecnica' },
+      { n: 'Dead bug', d: '3 × 10 por lado', t: 'La zona lumbar pegada al piso.', q: 'dead bug ejercicio core' },
+      { n: 'Superman', d: '3 × 12', t: 'Subí brazos y piernas a la vez, 2 s arriba.', q: 'ejercicio superman lumbar' }] },
+  { id: 'fuerza', emoji: '🏋️', name: 'Fuerza de piernas', category: 'Fuerza', intensity: 'media', minutes: 35,
+    notes: 'Sin máquinas: una mochila con peso alcanza. No la hagas el día antes del partido.',
+    items: [CALOR,
+      { n: 'Sentadilla búlgara', d: '4 × 8 por pierna', t: 'Pie de atrás en una silla, bajá vertical.', q: 'sentadilla bulgara tecnica' },
+      { n: 'Peso muerto a una pierna', d: '3 × 8 por pierna', t: 'Cadera hacia atrás, espalda recta.', q: 'peso muerto a una pierna tecnica' },
+      { n: 'Sentadilla con mochila', d: '4 × 10', t: 'Rodillas hacia afuera, talones apoyados.', q: 'sentadilla goblet tecnica' },
+      { n: 'Puente de glúteo', d: '3 × 12', t: 'Apretá arriba 2 s.', q: 'puente de gluteo tecnica' },
+      { n: 'Sentadilla isométrica en la pared', d: '3 × 40 s', t: 'Muslos paralelos al piso.', q: 'sentadilla isometrica pared' }] },
+  { id: 'prevencion', emoji: '🛡️', name: 'Prevención de lesiones', category: 'Prevención', intensity: 'media', minutes: 25,
+    notes: 'Basada en el programa FIFA 11+. Dos veces por semana bajan mucho los desgarros y los esguinces.',
+    items: [{ n: 'Nórdicos (isquiotibiales)', d: '3 × 5', t: 'Alguien te sostiene los talones; bajá lo más lento que puedas.', q: 'nordicos isquiotibiales ejercicio' },
+      { n: 'Copenhague (aductores)', d: '3 × 6 por lado', t: 'Empezá con la rodilla apoyada en la silla.', q: 'copenhagen plank aductores' },
+      { n: 'Equilibrio en un pie', d: '3 × 30 s por pierna', t: 'Con los ojos cerrados es más difícil.', q: 'equilibrio a una pierna propiocepcion tobillo' },
+      { n: 'Puente de glúteo a una pierna', d: '3 × 10 por pierna', t: '', q: 'puente de gluteo a una pierna' },
+      { n: 'Sentadilla a una pierna asistida', d: '3 × 6 por pierna', t: 'Agarrate de algo; rodilla alineada con el pie.', q: 'sentadilla a una pierna asistida' },
+      { n: 'Talones excéntricos en escalón', d: '3 × 12', t: 'Subí con dos pies, bajá lento con uno.', q: 'excentricos gemelos escalon tendon de aquiles' }] },
+  { id: 'recuperacion', emoji: '🧘', name: 'Recuperación y movilidad', category: 'Recuperación', intensity: 'suave', minutes: 20,
+    notes: 'Para el día después del partido. Tiene que dejarte mejor de lo que estabas.',
+    items: [{ n: 'Trote muy suave o bici', d: '10 min', t: 'Muy tranquilo.', q: 'trote regenerativo despues del partido' },
+      { n: 'Movilidad de cadera 90/90', d: '2 × 8 por lado', t: '', q: 'movilidad cadera 90 90' },
+      { n: 'Estiramientos', d: '30 s cada uno', t: 'Isquios, cuádriceps, aductores, glúteos y gemelos.', q: 'estiramientos futbol recuperacion' },
+      { n: 'Rodillo (si tenés)', d: '5 min', t: 'Piernas y espalda.', q: 'foam roller piernas futbol' }] },
+  { id: 'tecnica', emoji: '⚽', name: 'Técnica con pelota', category: 'Técnica', intensity: 'media', minutes: 25,
+    notes: 'Con una pelota y una pared alcanza.',
+    items: [{ n: 'Jueguitos', d: '5 min', t: 'Alterná pie derecho e izquierdo.', q: 'jueguitos futbol como mejorar' },
+      { n: 'Conducción en zigzag', d: '6 pasadas con cada pie', t: 'Usá botellas o conos.', q: 'conduccion zigzag conos futbol' },
+      { n: 'Pared contra un muro', d: '3 × 1 min con cada pie', t: 'Un toque y dos toques.', q: 'pases contra la pared futbol ejercicio' },
+      { n: 'Control orientado y pase', d: '3 × 10', t: 'Controlá hacia un costado y pasá.', q: 'control orientado futbol ejercicio' }] },
+  { id: 'activacion', emoji: '🔥', name: 'Activación pre-partido', category: 'Recuperación', intensity: 'suave', minutes: 15,
+    notes: 'Para el día antes del partido: despierta las piernas sin cansarlas.',
+    items: [{ n: 'Trote suave', d: '5 min', t: '', q: 'activacion pre partido futbol' },
+      { n: 'Movilidad dinámica', d: '5 min', t: 'Balanceos de pierna, estocadas con giro, tobillos.', q: 'movilidad dinamica futbol' },
+      { n: 'Aceleraciones progresivas', d: '4 × 20 m', t: 'Del 50% al 90%, no al máximo.', q: 'aceleraciones progresivas futbol' },
+      { n: 'Saltos suaves', d: '2 × 5', t: 'Sin esfuerzo máximo.', q: 'pogo jumps ejercicio' }] },
+  { id: 'hiit', emoji: '⏱️', name: 'Circuito HIIT', category: 'Resistencia', intensity: 'alta', minutes: 25,
+    notes: 'Corto e intenso, para cuando no hay tiempo. Se hace en un living.',
+    items: [CALOR,
+      { n: 'Circuito: 4 vueltas', d: '40 s trabajo · 20 s pausa', t: 'Burpees, escaladores, sentadilla con salto, jumping jacks y plancha. 1 min de pausa entre vueltas.', q: 'circuito hiit en casa futbol' }] }
+];
+const WEEK_TEMPLATES = [
+  { id: 'partido', name: 'Semana con partido el sábado', days: { 1: 'recuperacion', 2: 'explosividad', 3: 'pasadas', 4: 'superior', 5: 'activacion', 6: 'PARTIDO' } },
+  { id: 'intensa', name: 'Semana intensa (sin partido)', days: { 1: 'fuerza', 2: 'pasadas', 3: 'superior', 4: 'piques', 5: 'prevencion', 6: 'correr' } },
+  { id: 'dos', name: 'Mantenimiento: 2 días', days: { 2: 'explosividad', 4: 'correr' } },
+  { id: 'liviana', name: 'Semana liviana', days: { 1: 'recuperacion', 3: 'correr', 5: 'prevencion' } }
+];
+const INTENSITY = { suave: ['🟢','Suave'], media: ['🟡','Media'], alta: ['🔴','Intensa'] };
+const ytLink = (q) => `https://www.youtube.com/results?search_query=${encodeURIComponent(q)}`;
+const allRoutines = () => [...(S.RT || []).map(r => ({ ...r, own: true })), ...ROUTINES];
+const routineById = (id) => allRoutines().find(r => r.id === id);
+const planOf = (r) => ({ name: r.name, emoji: r.emoji, category: r.category, intensity: r.intensity, minutes: r.minutes, notes: r.notes || '', items: r.items });
+function exercisesHTML(items){
+  return `<div class="card" style="padding:4px 14px">${items.map((it, i) => `<div class="statrow" style="align-items:flex-start;gap:12px">
+    <span class="num" style="font-size:20px;font-weight:900;color:var(--muted);min-width:20px">${i + 1}</span>
+    <span class="grow"><b style="display:block">${esc(it.n)}</b><span class="small" style="color:var(--grass-ink);font-weight:700">${esc(it.d || '')}</span>${it.t ? `<span class="small muted" style="display:block">${esc(it.t)}</span>` : ''}</span>
+    ${it.q ? `<a class="btn ghost sm" style="box-shadow:none;padding:0 10px;text-decoration:none" href="${ytLink(it.q)}" target="_blank" rel="noopener" aria-label="Ver videos de ${esc(it.n)}">▶ Video</a>` : ''}</div>`).join('')}</div>`;
+}
+function routineMeta(r){ const i = INTENSITY[r.intensity]; return `${i ? `${i[0]} ${i[1]}` : ''}${r.minutes ? ` · ${r.minutes} min` : ''}${r.category ? ` · ${esc(r.category)}` : ''}`; }
+function librarySheet(){
+  const cats = [...new Set(allRoutines().map(r => r.own ? 'Del equipo' : r.category))];
+  let cat = null;
+  const el = openSheet(`<h2>Rutinas</h2><p class="muted">Rutinas de fútbol listas para mandar. Cada ejercicio tiene videos de referencia.</p>
+    <div class="chips scroll section" id="lb-c"><button class="chip on" data-c="">Todas</button>${cats.map(c => `<button class="chip" data-c="${esc(c)}">${esc(c)}</button>`).join('')}</div>
+    <div class="list" id="lb-l" style="margin-top:12px"></div>
+    ${isAdmin() ? '<button class="btn ghost section" id="lb-new">＋ Crear rutina desde cero</button><button class="btn section" id="lb-week">📅 Armar el plan de la semana</button>' : ''}`);
+  const draw = () => { $('#lb-l', el).innerHTML = allRoutines().filter(r => !cat || (r.own ? 'Del equipo' : r.category) === cat).map(r => `<button class="lrow" data-r="${r.id}"><span style="font-size:26px">${r.emoji}</span><span class="t"><b>${esc(r.name)}</b><small>${routineMeta(r)}${r.own ? ' · del equipo' : ''}</small></span></button>`).join(''); $$('#lb-l [data-r]', el).forEach(b => b.onclick = () => { closeSheet(); setTimeout(() => routineSheet(b.dataset.r), 80); }); };
+  $$('#lb-c .chip', el).forEach(b => b.onclick = () => { cat = b.dataset.c || null; $$('#lb-c .chip', el).forEach(x => x.classList.toggle('on', x === b)); draw(); });
+  draw();
+  const nw = $('#lb-new', el); if (nw) nw.onclick = () => { closeSheet(); setTimeout(() => routineEditSheet(null), 80); };
+  const wk = $('#lb-week', el); if (wk) wk.onclick = () => { closeSheet(); setTimeout(weekPlanSheet, 80); };
+}
+function routineSheet(id){
+  const r = routineById(id); if (!r) return;
+  const el = openSheet(`<div class="row"><span style="font-size:40px">${r.emoji}</span><div><h2>${esc(r.name)}</h2><p class="small muted">${routineMeta(r)}</p></div></div>
+    ${r.notes ? `<p class="section" style="margin-top:14px">${esc(r.notes)}</p>` : ''}
+    <div class="section">${exercisesHTML(r.items)}</div>
+    <p class="tiny muted" style="margin-top:8px">▶ Abre videos de YouTube con ese ejercicio para ver la técnica.</p>
+    ${isAdmin() ? `<div class="stack section"><button class="btn" id="rs-send">📣 Mandar al equipo</button><button class="btn ghost" id="rs-edit">✏️ ${r.own ? 'Editar' : 'Ajustar y guardar como rutina del equipo'}</button>${r.own ? '<button class="link danger" id="rs-arch" style="display:block;margin:4px auto 0">Quitar de las rutinas del equipo</button>' : ''}</div>` : ''}`);
+  const on = (s, f) => { const e = $(s, el); if (e) e.onclick = f; };
+  on('#rs-send', () => { closeSheet(); setTimeout(() => sendRoutineSheet(r), 80); });
+  on('#rs-edit', () => { closeSheet(); setTimeout(() => routineEditSheet(r), 80); });
+  on('#rs-arch', async () => { try { await rpc('fc_routine_save', { ...P(), p_team: S.teamId, p_id: r.id, p: { archived: true } }); closeSheet(); await refresh(); toast('Rutina quitada'); } catch(e){ toast(e.message); } });
+}
+const dayEnd = (d) => { const x = new Date(d); x.setHours(23, 59, 0, 0); return x; };
+const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+function sendRoutineSheet(r){
+  const t = new Date(); t.setDate(t.getDate() + 1);
+  let mand = true, proof = true;
+  const el = openSheet(`<h2>${r.emoji} ${esc(r.name)}</h2><p class="muted">Se manda como entrenamiento en casa con la rutina completa y los videos.</p>
+    <div class="stack section">
+      <label class="field"><span>¿Qué día lo tienen que hacer?</span><input class="input" type="date" id="sr-d" value="${ymd(t)}"></label>
+      <div class="field"><span>¿Es obligatorio?</span><div class="seg" id="sr-m"><button type="button" data-v="1" class="on">Sí, para todos</button><button type="button" data-v="0">Opcional</button></div></div>
+      <div class="field"><span>¿Foto de prueba?</span><div class="seg" id="sr-p"><button type="button" data-v="1" class="on">📸 Sí</button><button type="button" data-v="0">No hace falta</button></div></div>
+      <button class="btn" id="sr-ok">Mandar al equipo</button></div>`);
+  $$('#sr-m button', el).forEach(b => b.onclick = () => { mand = b.dataset.v === '1'; $$('#sr-m button', el).forEach(x => x.classList.toggle('on', x === b)); });
+  $$('#sr-p button', el).forEach(b => b.onclick = () => { proof = b.dataset.v === '1'; $$('#sr-p button', el).forEach(x => x.classList.toggle('on', x === b)); });
+  $('#sr-ok', el).onclick = async () => {
+    const d = $('#sr-d', el).value; if (!d) return toast('Elegí el día');
+    try {
+      const id = await rpc('fc_training_save', { ...P(), p_team: S.teamId, p_id: null, p: { kind: 'casa', title: r.name, details: r.notes || '', due_at: dayEnd(d + 'T12:00').toISOString(), mandatory: mand, proof, plan: planOf(r) } });
+      closeSheet(); await loadTeam(); openTraining(id); toast('Mandado. El equipo ya lo ve en Entrenos 💪');
+    } catch(e){ toast(e.message); }
+  };
+}
+function routineEditSheet(base){
+  const own = base && base.own;
+  const r = base ? JSON.parse(JSON.stringify(base)) : { name: '', emoji: '🏋️', category: 'Del equipo', intensity: 'media', minutes: 30, notes: '', items: [{ n: '', d: '', t: '', q: '' }] };
+  if (base && !own) r.name = r.name + ' (ajustada)';
+  let inten = r.intensity || 'media';
+  const el = openSheet(`<h2>${own ? 'Editar rutina' : base ? 'Ajustar rutina' : 'Nueva rutina'}</h2><p class="muted">Queda guardada en las rutinas del equipo para usarla cuando quieras.</p>
+    <div class="stack section">
+      <div class="grid2" style="grid-template-columns:72px 1fr"><label class="field"><span>Ícono</span><input class="input" id="re-e" maxlength="4" value="${esc(r.emoji)}" style="text-align:center;font-size:22px"></label>
+      <label class="field"><span>Nombre</span><input class="input" id="re-n" maxlength="60" value="${esc(r.name)}"></label></div>
+      <div class="field"><span>Intensidad</span><div class="seg" id="re-i">${Object.entries(INTENSITY).map(([k,[e,l]]) => `<button type="button" data-k="${k}" class="${inten === k ? 'on' : ''}">${e} ${l}</button>`).join('')}</div></div>
+      <label class="field"><span>Minutos aproximados</span><input class="input" id="re-m" type="number" inputmode="numeric" min="5" max="180" value="${r.minutes || ''}"></label>
+      <div class="field"><span>Ejercicios</span><div id="re-x" class="stack"></div><button type="button" class="btn ghost sm" id="re-add" style="margin-top:10px">＋ Agregar ejercicio</button></div>
+      <label class="field"><span>Indicaciones generales</span><textarea class="input" id="re-o" maxlength="1000">${esc(r.notes || '')}</textarea></label>
+      <button class="btn" id="re-ok">Guardar rutina</button></div>`);
+  const drawItems = () => {
+    $('#re-x', el).innerHTML = r.items.map((it, i) => `<div class="card" style="padding:10px 12px" data-i="${i}">
+      <div class="row"><input class="input" data-f="n" value="${esc(it.n)}" placeholder="Ejercicio (ej: Piques de 20 m)" style="min-height:44px"><button type="button" class="iconbtn" data-x="${i}" aria-label="Quitar ejercicio">✕</button></div>
+      <input class="input" data-f="d" value="${esc(it.d)}" placeholder="Series (ej: 6 · pausa 60 s)" style="min-height:44px;margin-top:6px">
+      <input class="input" data-f="t" value="${esc(it.t)}" placeholder="Consejo (opcional)" style="min-height:44px;margin-top:6px"></div>`).join('');
+    $$('#re-x [data-i]', el).forEach(c => $$('input', c).forEach(inp => inp.oninput = () => { r.items[+c.dataset.i][inp.dataset.f] = inp.value; }));
+    $$('#re-x [data-x]', el).forEach(b => b.onclick = () => { r.items.splice(+b.dataset.x, 1); drawItems(); });
+  };
+  drawItems();
+  $('#re-add', el).onclick = () => { r.items.push({ n: '', d: '', t: '', q: '' }); drawItems(); };
+  $$('#re-i button', el).forEach(b => b.onclick = () => { inten = b.dataset.k; $$('#re-i button', el).forEach(x => x.classList.toggle('on', x === b)); });
+  $('#re-ok', el).onclick = async () => {
+    const items = r.items.filter(it => it.n.trim()).map(it => ({ n: it.n.trim(), d: (it.d || '').trim(), t: (it.t || '').trim(), q: it.q || it.n.trim() }));
+    const p = { name: $('#re-n', el).value.trim(), emoji: $('#re-e', el).value.trim() || '🏋️', category: 'Del equipo', intensity: inten, minutes: $('#re-m', el).value, notes: $('#re-o', el).value.trim(), items };
+    if (!p.name) return toast('Ponele un nombre');
+    if (!items.length) return toast('Agregá al menos un ejercicio');
+    try { const id = await rpc('fc_routine_save', { ...P(), p_team: S.teamId, p_id: own ? base.id : null, p }); closeSheet(); await refresh(); setTimeout(() => routineSheet(id), 120); toast('Rutina guardada'); }
+    catch(e){ toast(e.message); }
+  };
+}
+// Plan semanal: una rutina por día. Cada día se manda como un entrenamiento en casa con fecha límite ese día.
+function weekPlanSheet(){
+  const DN = ['Lunes','Martes','Miércoles','Jueves','Viernes','Sábado','Domingo'];
+  const monday = (offset) => { const d = new Date(); d.setHours(12,0,0,0); const k = (d.getDay() + 6) % 7; d.setDate(d.getDate() - k + offset * 7); return d; };
+  let week = new Date().getDay() >= 5 || new Date().getDay() === 0 ? 1 : 0, mand = true, proof = true, plan = {};
+  const el = openSheet(`<h2>Plan de la semana</h2><p class="muted">Elegí una semana tipo y ajustá día por día. Cada día le llega al equipo como entrenamiento con su rutina y sus videos.</p>
+    <div class="seg section" id="wp-w"><button type="button" data-w="0">Esta semana</button><button type="button" data-w="1">La que viene</button></div>
+    <div class="mini" style="margin:14px 0 6px">Semanas tipo</div>
+    <div class="chips scroll" id="wp-t">${WEEK_TEMPLATES.map(w => `<button type="button" class="chip" data-t="${w.id}">${esc(w.name)}</button>`).join('')}</div>
+    <div class="card section" style="padding:0 14px" id="wp-d"></div>
+    <div class="field section"><span>¿Obligatorio?</span><div class="seg" id="wp-m"><button type="button" data-v="1" class="on">Sí, para todos</button><button type="button" data-v="0">Opcional</button></div></div>
+    <div class="field section"><span>¿Foto de prueba?</span><div class="seg" id="wp-p"><button type="button" data-v="1" class="on">📸 Sí</button><button type="button" data-v="0">No hace falta</button></div></div>
+    <button class="btn section" id="wp-ok">Mandar la semana</button>`);
+  const opts = (sel) => `<option value="">😴 Descanso</option>${allRoutines().map(r => `<option value="${r.id}" ${sel === r.id ? 'selected' : ''}>${r.emoji} ${esc(r.name)}</option>`).join('')}`;
+  const draw = () => {
+    $$('#wp-w button', el).forEach(b => b.classList.toggle('on', +b.dataset.w === week));
+    const m0 = monday(week), today = new Date(); today.setHours(0,0,0,0);
+    $('#wp-d', el).innerHTML = DN.map((n, i) => {
+      const d = new Date(m0); d.setDate(m0.getDate() + i);
+      const past = d < today;
+      const match = S.T.matches.find(x => x.starts_at && ymd(new Date(x.starts_at)) === ymd(d));
+      return `<div class="dtrow"><span class="who"><span style="min-width:0"><b style="display:block">${n} ${d.getDate()}</b><span class="mini">${match ? `⚽ vs ${esc(match.opponent)}` : past ? 'Ya pasó' : ''}</span></span></span>
+        ${match ? '<span class="pill ok">Partido</span>' : `<select class="input" data-day="${ymd(d)}" style="min-height:42px;font-size:15px;max-width:200px" ${past ? 'disabled' : ''}>${opts(plan[i])}</select>`}</div>`;
+    }).join('');
+    $$('#wp-d select', el).forEach((s, k) => s.onchange = () => { const i = DN.findIndex((_, j) => { const d = new Date(m0); d.setDate(m0.getDate() + j); return ymd(d) === s.dataset.day; }); plan[i] = s.value; });
+  };
+  $$('#wp-w button', el).forEach(b => b.onclick = () => { week = +b.dataset.w; draw(); });
+  $$('#wp-t .chip', el).forEach(b => b.onclick = () => { const w = WEEK_TEMPLATES.find(x => x.id === b.dataset.t); plan = {}; Object.entries(w.days).forEach(([d, r]) => { if (r !== 'PARTIDO') plan[+d - 1] = r; }); $$('#wp-t .chip', el).forEach(x => x.classList.toggle('on', x === b)); draw(); });
+  $$('#wp-m button', el).forEach(b => b.onclick = () => { mand = b.dataset.v === '1'; $$('#wp-m button', el).forEach(x => x.classList.toggle('on', x === b)); });
+  $$('#wp-p button', el).forEach(b => b.onclick = () => { proof = b.dataset.v === '1'; $$('#wp-p button', el).forEach(x => x.classList.toggle('on', x === b)); });
+  draw();
+  $('#wp-ok', el).onclick = async () => {
+    const jobs = $$('#wp-d select', el).filter(s => !s.disabled && s.value).map(s => ({ day: s.dataset.day, r: routineById(s.value) }));
+    if (!jobs.length) return toast('Elegí al menos un día con rutina');
+    const b = $('#wp-ok', el); b.disabled = true; b.textContent = 'Mandando…';
+    try {
+      for (const j of jobs) await rpc('fc_training_save', { ...P(), p_team: S.teamId, p_id: null, p: { kind: 'casa', title: j.r.name, details: j.r.notes || '', due_at: dayEnd(j.day + 'T12:00').toISOString(), mandatory: mand, proof, plan: planOf(j.r) } });
+      closeSheet(); await refresh(); toast(`Semana mandada: ${plural(jobs.length, 'entrenamiento', 'entrenamientos')} 💪`, 3500);
+    } catch(e){ toast(e.message); b.disabled = false; b.textContent = 'Mandar la semana'; }
+  };
+}
+
 /* ============ Entrenamientos ============ */
 // En cancha: cada uno confirma y después el DT toma asistencia. En casa: el DT pone la rutina y cada uno manda la foto como prueba.
-const TRAIN_TEMPLATES = [
-  ['💪 Fuerza en casa', 'Sentadillas 4x15, estocadas 3x12 por pierna, flexiones 4x10, plancha 3x40 s y puente de glúteo 3x15.'],
-  ['🏃 Correr 5 km', 'Trote suave de 5 km (o 30 minutos). Mandá la captura del reloj o de la app.'],
-  ['🧘 Movilidad', '20 minutos: cadera, tobillos, isquios y aductores.'],
-  ['⚽ Técnica con pelota', '20 minutos: jueguitos, conducción con las dos piernas y pases contra la pared.'],
-  ['🛡️ Prevención de lesiones', 'Nórdicos 3x6, Copenhague 3x8 por lado y equilibrio en un pie 3x30 s.']
-];
 const TSTATUS = { voy: ['👍','Va'], no_puedo: ['🙅','No puede'], presente: ['✅','Presente'], ausente: ['❌','Ausente'], hecho: ['✅','Hecho'], rechazado: ['↩️','A rehacer'] };
 const trainings = () => (S.TR && S.TR.trainings) || [];
 const tlog = (tid, mid) => ((S.TR && S.TR.logs) || []).find(l => l.training_id === tid && l.member_id === mid);
@@ -1296,7 +1515,7 @@ function trainCard(t){
   return `<button class="card tap" data-train="${t.id}" style="padding:12px 14px">
     <span class="row" style="align-items:flex-start"><span style="font-size:28px;line-height:1">${t.kind === 'casa' ? '🏠' : '🏟️'}</span>
       <span class="grow"><b class="ell" style="display:block;font-size:17px">${esc(t.title)}</b>
-        <span class="small muted">${t.kind === 'casa' ? (w ? `Hasta el ${fmtWhen(w)}` : 'Sin fecha límite') : fmtWhen(w)}${t.venue ? ' · ' + esc(t.venue) : ''}</span></span>
+        <span class="small muted">${t.kind === 'casa' ? (w ? `Hasta el ${fmtWhen(w)}` : 'Sin fecha límite') : fmtWhen(w)}${t.venue ? ' · ' + esc(t.venue) : ''}${t.plan && INTENSITY[t.plan.intensity] ? ' · ' + INTENSITY[t.plan.intensity][0] + (t.plan.minutes ? ` ${t.plan.minutes}'` : '') : ''}</span></span>
       ${t.mandatory ? '<span class="pill coral">Obligatorio</span>' : ''}</span>
     <span class="row" style="margin-top:10px;gap:10px"><span class="bar grow"><i style="width:${pr.total ? Math.round(pr.done / pr.total * 100) : 0}%"></i></span><span class="mini">${pr.done}/${pr.total} ${t.kind === 'casa' ? 'lo hicieron' : 'fueron'}</span>${myPill}</span>
   </button>`;
@@ -1313,12 +1532,15 @@ function renderEntrenos(){
   const past = trainings().filter(t => tPast(t));
   $('#main').innerHTML = `
     <div class="row between" style="margin-bottom:10px"><h1>Entrenos</h1>${adm ? '<button class="btn sm" id="t-new">＋ Entrenamiento</button>' : ''}</div>
+    <div class="grid2" style="margin-bottom:14px"><button class="btn ghost sm" style="width:100%" id="t-lib">📚 Rutinas</button>${adm ? '<button class="btn bib sm" style="width:100%;box-shadow:0 3px 0 #A9C21B" id="t-week">📅 Plan semanal</button>' : '<span></span>'}</div>
     ${me && me.plays && c.count ? `<div class="kpis" style="grid-template-columns:repeat(3,1fr);margin-bottom:6px"><div><b>${c.done}</b><span>Cumplidos</span></div><div><b>${c.count}</b><span>Cuentan</span></div><div><b style="color:${c.done / c.count >= .8 ? 'var(--grass)' : c.done / c.count >= .5 ? 'var(--gold)' : 'var(--coral)'}">${Math.round(c.done / c.count * 100)}%</b><span>Compromiso</span></div></div>` : ''}
     ${pend.length ? `<div class="section" style="margin-top:12px"><div class="section-title"><h2>Para hacer</h2></div><div class="list">${pend.map(trainCard).join('')}</div></div>` : ''}
     ${up.length ? `<div class="section"><div class="section-title"><h2>Se vienen</h2></div><div class="list">${up.map(trainCard).join('')}</div></div>` : ''}
     ${past.length ? `<div class="section"><div class="section-title"><h2>Anteriores</h2></div><div class="list">${past.map(trainCard).join('')}</div></div>` : ''}
     ${!trainings().length ? `<div class="card empty"><div class="big">🏋️</div><h3>Todavía no hay entrenamientos</h3><p class="muted small">${adm ? 'Proponé uno en cancha o mandá una rutina para hacer en casa. Si es obligatorio, cada uno manda la foto como prueba.' : 'Cuando el DT proponga uno, aparece acá.'}</p>${adm ? '<button class="btn sm" id="t-new2" style="margin-top:12px">＋ Entrenamiento</button>' : ''}</div>` : ''}`;
   [$('#t-new'), $('#t-new2')].forEach(b => { if (b) b.onclick = () => trainingEditSheet(null); });
+  $('#t-lib').onclick = librarySheet;
+  const tw = $('#t-week'); if (tw) tw.onclick = weekPlanSheet;
   bindTrainCards($('#main'));
 }
 function renderTraining(id){
@@ -1345,6 +1567,7 @@ function renderTraining(id){
       <p class="small muted" style="margin-top:4px">${t.kind === 'casa' ? (w ? `Hasta el ${fmtWhen(w)}` : 'Sin fecha límite') : fmtWhen(w)}${t.venue ? ' · ' + esc(t.venue) : ''}${t.kind === 'casa' && t.proof ? ' · Con foto de prueba (dura 24 h)' : ''}</p>
       ${t.details ? `<p style="margin-top:10px;white-space:pre-line">${esc(t.details)}</p>` : ''}
     </div>
+    ${t.plan && t.plan.items && t.plan.items.length ? `<div class="section"><div class="section-title"><h2>${esc(t.plan.emoji || '')} La rutina</h2><span class="small muted">${routineMeta(t.plan)}</span></div>${exercisesHTML(t.plan.items)}</div>` : ''}
     ${adm ? `<div class="grid2" style="margin-top:12px"><button class="btn ghost sm" style="width:100%" id="t-edit">✏️ Editar</button>${t.kind === 'cancha' ? `<button class="btn sm" style="width:100%" id="t-att">✅ Tomar asistencia</button>` : `<a class="btn sm" style="width:100%;text-decoration:none" href="${wa(`${S.T.team.emoji} ${t.title}${t.mandatory ? ' (obligatorio)' : ''}\n${w ? 'Hasta el ' + fmtWhen(w) : ''}\nFaltan: ${pending.map(o => o.m.name).join(', ') || 'nadie 🙌'}\nSe sube la foto en La Casaca: ${BASE}`)}" target="_blank" rel="noopener">📣 Empujón</a>`}</div>` : ''}
     ${me && me.plays ? `<div class="section"><div class="section-title"><h2>Tu parte</h2></div>${mine}</div>` : ''}
     <div class="section"><div class="section-title"><h2>El equipo</h2><span class="small muted">${done.length}/${rows.length}</span></div>
@@ -1453,11 +1676,11 @@ function attendanceSheet(t){
 }
 function trainingEditSheet(id){
   const t = id ? trainings().find(x => x.id === id) : { kind: 'casa', title: '', details: '', mandatory: true, proof: true };
-  let kind = t.kind, mand = t.mandatory, proof = t.proof;
+  let kind = t.kind, mand = t.mandatory, proof = t.proof, plan = t.plan || null;
   const el = openSheet(`<h2>${id ? 'Editar entrenamiento' : 'Nuevo entrenamiento'}</h2>
     <form class="stack section" id="te">
       ${id ? '' : `<div class="seg" id="te-k"><button type="button" data-k="casa" class="${kind === 'casa' ? 'on' : ''}">🏠 En casa</button><button type="button" data-k="cancha" class="${kind === 'cancha' ? 'on' : ''}">🏟️ En cancha</button></div>`}
-      <div id="te-tpl" ${kind === 'casa' && !id ? '' : 'hidden'}><div class="mini" style="margin-bottom:6px">Rutinas rápidas</div><div class="chips scroll">${TRAIN_TEMPLATES.map((x, i) => `<button type="button" class="chip" data-t="${i}">${x[0]}</button>`).join('')}</div></div>
+      <div id="te-tpl" ${kind === 'casa' && !id ? '' : 'hidden'}><div class="mini" style="margin-bottom:6px">Elegí una rutina (trae los ejercicios y los videos)</div><div class="chips scroll">${allRoutines().map(r => `<button type="button" class="chip" data-t="${r.id}">${r.emoji} ${esc(r.name)}</button>`).join('')}</div></div>
       <label class="field"><span>Título</span><input class="input" id="te-t" maxlength="60" value="${esc(t.title)}" placeholder="${kind === 'casa' ? 'Ej: Fuerza en casa' : 'Ej: Entrenamiento del martes'}"></label>
       <label class="field"><span>Qué hay que hacer</span><textarea class="input" id="te-d" maxlength="1500" placeholder="Ej: 4x15 sentadillas, 3x12 estocadas…">${esc(t.details || '')}</textarea></label>
       <label class="field"><span id="te-wl">${kind === 'casa' ? 'Hasta cuándo' : 'Día y hora'}</span><input class="input" id="te-w" type="datetime-local" value="${toLocalInput(tWhen(t))}"></label>
@@ -1468,7 +1691,7 @@ function trainingEditSheet(id){
     </form>`);
   const syncKind = () => { $('#te-tpl', el).hidden = kind !== 'casa' || !!id; $('#te-vb', el).hidden = kind !== 'cancha'; $('#te-pb', el).hidden = kind !== 'casa'; $('#te-wl', el).textContent = kind === 'casa' ? 'Hasta cuándo' : 'Día y hora'; };
   $$('#te-k button', el).forEach(b => b.onclick = () => { kind = b.dataset.k; $$('#te-k button', el).forEach(x => x.classList.toggle('on', x === b)); syncKind(); });
-  $$('#te-tpl .chip', el).forEach(b => b.onclick = () => { const [ti, d] = TRAIN_TEMPLATES[+b.dataset.t]; $('#te-t', el).value = ti.replace(/^\S+\s/, ''); $('#te-d', el).value = d; $$('#te-tpl .chip', el).forEach(x => x.classList.toggle('on', x === b)); });
+  $$('#te-tpl .chip', el).forEach(b => b.onclick = () => { const r = routineById(b.dataset.t); plan = planOf(r); $('#te-t', el).value = r.name; $('#te-d', el).value = r.notes || ''; $$('#te-tpl .chip', el).forEach(x => x.classList.toggle('on', x === b)); });
   $$('#te-m button', el).forEach(b => b.onclick = () => { mand = b.dataset.v === '1'; $$('#te-m button', el).forEach(x => x.classList.toggle('on', x === b)); });
   $$('#te-p button', el).forEach(b => b.onclick = () => { proof = b.dataset.v === '1'; $$('#te-p button', el).forEach(x => x.classList.toggle('on', x === b)); });
   $('#te', el).onsubmit = async (e) => {
@@ -1477,7 +1700,7 @@ function trainingEditSheet(id){
     const wv = $('#te-w', el).value, when = wv ? new Date(wv).toISOString() : '';
     if (kind === 'cancha' && !when) return toast('Poné día y hora');
     const p = { kind, title, details: $('#te-d', el).value.trim(), mandatory: mand, proof: kind === 'casa' ? proof : false,
-      starts_at: kind === 'cancha' ? when : '', due_at: kind === 'casa' ? when : '', venue: kind === 'cancha' ? $('#te-v', el).value.trim() : '' };
+      starts_at: kind === 'cancha' ? when : '', due_at: kind === 'casa' ? when : '', venue: kind === 'cancha' ? $('#te-v', el).value.trim() : '', ...(plan ? { plan } : {}) };
     try { const nid = await rpc('fc_training_save', { ...P(), p_team: S.teamId, p_id: id, p }); closeSheet(); await loadTeam(); openTraining(nid); toast(id ? 'Guardado' : 'Listo: el equipo ya lo ve en Entrenos 💪'); }
     catch(err){ toast(err.message); }
   };

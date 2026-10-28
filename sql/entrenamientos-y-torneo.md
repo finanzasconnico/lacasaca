@@ -17,3 +17,9 @@ Estas partes ya están cargadas en la base (proyecto racha-app). Quedan anotadas
   - domingos, miércoles y viernes a las 12:00, para correcciones y horarios.
   - `casaca-torneo-procesar` corre cada 2 minutos y procesa lo que respondió el servidor del torneo.
 - El DT puede forzar una actualización desde la app, como mucho una vez cada 10 minutos.
+
+## Rutinas
+- La biblioteca de rutinas de fútbol viene en la app (`ROUTINES` en `index.html`): explosividad, piques, pasadas, correr, fartlek, tren superior, fuerza, prevención (FIFA 11+), recuperación, técnica, activación pre-partido y HIIT.
+- Cada ejercicio trae series, un consejo y un link a videos de YouTube de ese ejercicio.
+- `fc_routines`: las rutinas propias del equipo (copias ajustadas o creadas desde cero). Funciones `fc_routines_list` y `fc_routine_save` (se archivan, no se borran).
+- `fc_trainings.plan`: la rutina completa que se mandó con cada entrenamiento.
