@@ -168,6 +168,7 @@ begin
   me := _fc_member(_uid(p_token), k.team_id);
   if p_undo is not null then update fc_pickup_goals set undone = true where id = p_undo and pickup_id = p_pickup; return; end if;
   if p_side not in ('oscuro','claro') then raise exception 'DATOS_INVALIDOS'; end if;
+  if p_member is not null and not exists (select 1 from fc_members where id = p_member and team_id = k.team_id) then raise exception 'NO_PERMITIDO'; end if;
   insert into fc_pickup_goals(pickup_id, member_id, side, created_by) values (p_pickup, p_member, p_side, me.id);
 end $$;
 

@@ -1,5 +1,5 @@
 // Service worker de La Casaca: instalable y abre aunque haya mala señal en la cancha.
-const CACHE = 'casaca-v2';
+const CACHE = 'casaca-v3';
 const SHELL = ['/', '/index.html', '/manifest.webmanifest', '/icons/icon-192.png', '/icons/icon-512.png', '/icons/apple-touch-icon.png', '/icons/favicon.png'];
 
 self.addEventListener('install', (e) => {

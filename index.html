@@ -5,6 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>La Casaca</title>
 <meta name="description" content="La app del plantel: convocatoria, pizarra, estadísticas y la carta de cada jugador.">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="La Casaca">
+<meta property="og:title" content="La Casaca · la app del equipo">
+<meta property="og:description" content="Convocatoria, pizarra, estadísticas, torneo y entrenamientos. Para el plantel y el DT.">
+<meta property="og:image" content="https://lacasacadt.vercel.app/icons/og.jpg">
+<meta name="twitter:card" content="summary_large_image">
 <meta name="theme-color" content="#EEF5EC" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#0B1611" media="(prefers-color-scheme: dark)">
 <meta name="color-scheme" content="light dark">
@@ -886,7 +892,7 @@ function renderInicio(){
       ${nx.dt_member === meId() && !isDT() ? `<div class="count" style="margin-top:8px">📋 Este partido lo dirigís vos: armás la convocatoria, la pizarra y el resultado.</div>` : ''}
       ${m && m.plays ? `<div style="margin-top:14px">${rsvpButtons(nx, mine && mine.answer)}</div>` : ''}
       <div class="count">👍 ${cnt.voy} van · 🤔 ${cnt.duda} dudan · 🙅 ${cnt.no} no van${cnt.pending.length ? ` · ${cnt.pending.length} sin responder` : ''}</div>
-      <button class="link" id="nx-open" style="color:#fff;margin-top:10px;text-decoration:underline">Ver convocatoria</button>
+      <div class="row" style="gap:18px;margin-top:10px"><button class="link" id="nx-open" style="color:#fff;text-decoration:underline">Ver convocatoria</button>${lgMatchOf(nx) ? '<button class="link" id="nx-rv" style="color:#fff;text-decoration:underline">🔎 Informe del rival</button>' : ''}</div>
     </div>` : `<div class="card empty"><div class="big">🗓️</div><h3>No hay partidos en agenda</h3><p class="muted small" style="margin-top:4px">${isAdmin() ? 'Cargá el próximo y el plantel confirma desde acá.' : 'Cuando el DT cargue el próximo, confirmás desde acá.'}</p>${isAdmin() ? '<button class="btn sm" id="nx-new" style="margin-top:12px">＋ Cargar partido</button>' : ''}</div>`}
 
     ${teamForm().length ? `<div class="card section row between" style="padding:12px 16px"><span><b style="display:block">Últimos ${teamForm().length}</b><span class="mini">${esc(S.T.team.name)}${LG() && LG().standings.find(s => isUs(s.id)) ? ` · ${LG().standings.find(s => isUs(s.id)).pos}º en la tabla` : ''}</span></span>${formDots(teamForm(), true)}</div>` : ''}
@@ -906,9 +912,10 @@ function renderInicio(){
     </div>` : ''}
 
     ${last ? `<div class="section"><div class="section-title"><h2>Último partido</h2></div>${matchCard(last)}</div>` : ''}
-    ${isAdmin() && !T.members.some(x => x.claimed && x.id !== meId()) ? inviteCard() : ''}`;
+    ${isAdmin() && missingPlayers().length >= Math.max(2, players().length / 3) ? inviteCard() : ''}`;
   bindRsvp($('#main'));
   const o = $('#nx-open'); if (o) o.onclick = () => openMatch(nx.id);
+  const nr = $('#nx-rv'); if (nr) nr.onclick = () => { const lm = lgMatchOf(nx); rivalSheet(isUs(lm.home_id) ? lm.away_id : lm.home_id); };
   const nn = $('#nx-new'); if (nn) nn.onclick = () => matchEditSheet(null);
   const sf = $('#st-fix'); if (sf) sf.onclick = () => statusSheet(m);
   const mc = $('#my-card'); if (mc) mc.onclick = () => playerSheet(meId());
@@ -921,13 +928,25 @@ function renderInicio(){
   bindInvite($('#main'));
 }
 function closesIn(x){ const h = Math.max(1, Math.round((new Date(x.result_at).getTime() + 48*36e5 - Date.now()) / 36e5)); return h === 1 ? 'en menos de 1 h' : `en ${h} h`; }
-function inviteLink(code){ return `${BASE}?e=${code}`; }
-function inviteText(){ const t = S.T.team; return `${t.emoji} Sumate a ${t.name} en La Casaca: confirmás si vas, ves la pizarra y cargás tus goles.\n${inviteLink(t.code)}\nCódigo: ${t.code}`; }
+// /i/CODIGO muestra el nombre del equipo en la vista previa de WhatsApp (api/i.js) y abre la app con el código.
+function inviteLink(code){ return /vercel\.app$/.test(location.hostname) ? `${location.origin}/i/${code}` : `${BASE}?e=${code}`; }
+const missingPlayers = () => players().filter(m => !m.claimed);
+function inviteText(){
+  const t = S.T.team, am = isPicadito();
+  return `${t.emoji} *${t.name}* ya tiene app 📲\n${inviteLink(t.code)}\n\n1️⃣ Poné tu apodo y un PIN de 4 números\n2️⃣ ${missingPlayers().length && !am ? 'Tocá tu nombre en el plantel (ya estás cargado)' : 'Sumate al grupo'}\n3️⃣ Listo: ${am ? 'te anotás para el fulbito, ves los equipos y la tabla' : 'confirmás si vas, ves la pizarra, tus goles y la tabla del torneo'}\n\nTarda un minuto. Si te pide código: ${t.code}`;
+}
+// Para el grupo: nombra a los que todavía no entraron.
+function nudgeText(){
+  const t = S.T.team, ms = missingPlayers();
+  return `📣 Faltan entrar a la app de ${t.name} ${t.emoji}: ${ms.map(m => m.name).join(', ')}.\nEs un minuto: entrás, tocás tu nombre y listo 👇\n${inviteLink(t.code)}`;
+}
 function inviteCard(){
+  const ms = missingPlayers(), joined = players().length - ms.length;
   return `<div class="card section" style="border-color:var(--grass)"><h3>📲 Invitá al plantel</h3>
-    <p class="muted small" style="margin:4px 0 12px">Mandá este link al grupo de WhatsApp. Cada uno elige su ficha y entra con su apodo.</p>
+    <p class="muted small" style="margin:4px 0 12px">Mandá el link al grupo de WhatsApp: aparece con el nombre del equipo, cada uno toca su nombre y entra con su apodo.${players().length ? ` Ya entraron <b>${joined} de ${players().length}</b>.` : ''}</p>
     <div class="row" style="margin-bottom:12px"><span class="invcode">${esc(S.T.team.code)}</span></div>
-    <div class="grid2"><a class="btn sm" style="width:100%;text-decoration:none" href="${wa(inviteText())}" target="_blank" rel="noopener">WhatsApp</a><button class="btn ghost sm" style="width:100%" data-copyinv>Copiar link</button></div></div>`;
+    <div class="grid2"><a class="btn sm" style="width:100%;text-decoration:none" href="${wa(inviteText())}" target="_blank" rel="noopener">WhatsApp</a><button class="btn ghost sm" style="width:100%" data-copyinv>Copiar link</button></div>
+    ${ms.length && joined ? `<p class="small muted" style="margin-top:12px">Faltan: ${ms.slice(0, 12).map(m => esc(m.name)).join(', ')}${ms.length > 12 ? ` y ${ms.length - 12} más` : ''}.</p><a class="btn ghost sm" style="width:100%;margin-top:8px;text-decoration:none" href="${wa(nudgeText())}" target="_blank" rel="noopener">📣 Avisar a los que faltan</a>` : ''}</div>`;
 }
 function bindInvite(root){ $$('[data-copyinv]', root).forEach(b => b.onclick = async () => { (await copy(inviteText())) ? toast('Invitación copiada. Pegala en el grupo.') : toast(inviteLink(S.T.team.code), 6000); }); }
 
@@ -994,6 +1013,7 @@ function renderMatch(id){
       ${x.difficulty ? `<div class="meta" style="margin-top:8px">Rival <span class="stars">${'★'.repeat(x.difficulty)}<i style="color:rgba(255,255,255,.25)">${'★'.repeat(5 - x.difficulty)}</i></span></div>` : ''}
     </div>
     ${dt ? `<div class="grid2" style="margin-top:12px"><button class="btn ghost sm" style="width:100%" id="m-edit">✏️ Editar</button><button class="btn sm" style="width:100%" id="m-res">${x.played ? '🏁 Resultado' : '🏁 Cargar resultado'}</button></div>` : ''}
+    ${lgMatchOf(x) ? `<div class="grid2" style="margin-top:12px">${x.played ? '<button class="btn ghost sm" style="width:100%" id="m-sum">📄 Resumen oficial</button>' : ''}<button class="btn ghost sm" style="width:100%${x.played ? '' : ';grid-column:1/-1'}" id="m-rv">🔎 Informe del rival</button></div>` : ''}
     ${x.notes ? `<div class="card section" style="margin-top:14px"><h3>📋 Notas del rival</h3><p class="muted" style="margin-top:4px;white-space:pre-line">${esc(x.notes)}</p></div>` : ''}
 
     ${!x.played ? `<div class="section"><div class="section-title"><h2>Convocatoria</h2><span class="small muted">${cnt.voy} van</span></div>
@@ -1030,6 +1050,8 @@ function renderMatch(id){
   bindRsvp($('#main'));
   const on = (sel, fn) => { const e = $(sel); if (e) e.onclick = fn; };
   on('#m-edit', () => matchEditSheet(id));
+  on('#m-sum', () => matchSummarySheet(x.ext_id));
+  on('#m-rv', () => { const lm = lgMatchOf(x); rivalSheet(isUs(lm.home_id) ? lm.away_id : lm.home_id); });
   on('#m-res', () => resultSheet(id));
   on('#m-mine', () => myStatsSheet(id, meId()));
   on('#m-vote', () => voteSheet(id));
@@ -2274,33 +2296,190 @@ function tablaTorneo(box){
     <div class="row between" style="margin-bottom:10px"><div><h2>${esc(L.torneo_name || 'Torneo')}</h2><p class="tiny muted">${L.last_sync ? `Actualizado ${fmtWhen(L.last_sync)}` : 'Todavía sin datos'} · ${esc(L.site)}</p></div>
       ${isAdmin() ? '<button class="btn ghost sm" id="lg-ref">↻ Actualizar</button>' : ''}</div>
     ${me ? `<div class="kpis" style="margin-bottom:14px"><div><b>${me.pos}º</b><span>Posición</span></div><div><b>${me.pts}</b><span>Puntos</span></div><div><b style="font-size:21px;line-height:1.3">${me.pg}-${me.pe}-${me.pp}</b><span>G-E-P</span></div><div><b>${me.dg > 0 ? '+' : ''}${me.dg}</b><span>Dif. gol</span></div></div>` : ''}
+    ${lgPendingHTML()}
     <div class="section-title"><h2>Posiciones</h2></div>
     <div class="sheetwrap"><table class="pl tight"><thead><tr><th class="l">Equipo</th><th>Pts</th><th>Últimas 5</th><th>PJ</th><th>G</th><th>E</th><th>P</th><th>GF</th><th>GC</th><th>DG</th></tr></thead><tbody>
-      ${L.standings.map(s => `<tr${isUs(s.id) ? ' style="background:var(--grass-soft)"' : ''}><td class="l${isUs(s.id) ? ' me' : ''}"${isUs(s.id) ? ' style="background:var(--grass-soft)"' : ''}><span class="mini" style="display:inline-block;width:20px">${s.pos}</span>${esc(s.name)}</td><td><b>${s.pts}</b></td><td style="text-align:left">${formDots(lgForm(s.id))}</td><td>${s.pj}</td><td>${s.pg}</td><td>${s.pe}</td><td>${s.pp}</td><td>${s.gf}</td><td>${s.gc}</td><td>${s.dg > 0 ? '+' : ''}${s.dg}</td></tr>`).join('')}
+      ${L.standings.map(s => `<tr data-rv="${s.id}" style="cursor:pointer${isUs(s.id) ? ';background:var(--grass-soft)' : ''}"><td class="l${isUs(s.id) ? ' me' : ''}"${isUs(s.id) ? ' style="background:var(--grass-soft)"' : ''}><span class="mini" style="display:inline-block;width:20px">${s.pos}</span>${esc(s.name)}</td><td><b>${s.pts}</b></td><td style="text-align:left">${formDots(lgForm(s.id))}</td><td>${s.pj}</td><td>${s.pg}</td><td>${s.pe}</td><td>${s.pp}</td><td>${s.gf}</td><td>${s.gc}</td><td>${s.dg > 0 ? '+' : ''}${s.dg}</td></tr>`).join('')}
     </tbody></table></div>
     <div class="section"><div class="section-title"><h2>Fecha a fecha</h2></div>
       <div class="chips scroll" style="margin-bottom:10px">${fechas.map(f => `<button class="chip ${f === S.lgFecha ? 'on' : ''}" data-fe="${esc(f)}">${esc((f || '').replace(/^FECHA\s*/i, 'F'))}</button>`).join('')}</div>
       <div class="card" style="padding:4px 14px">${fm.map(m => { const fin = m.status === 'FINA', ours = isUs(m.home_id) || isUs(m.away_id);
-        return `<div class="statrow" style="${ours ? 'font-weight:800' : ''}"><span class="grow" style="text-align:right">${esc(m.home)}</span>
+        return `<div class="statrow" ${fin ? `data-lm="${m.id}" role="button" tabindex="0"` : `data-rv="${isUs(m.home_id) ? m.away_id : m.home_id}" role="button" tabindex="0"`} style="cursor:pointer;${ours ? 'font-weight:800' : ''}"><span class="grow" style="text-align:right">${esc(m.home)}</span>
           <span class="num" style="min-width:64px;text-align:center;font-size:22px;font-weight:900">${fin ? `${m.gh} - ${m.ga}` : '<span class="mini">vs</span>'}</span>
-          <span class="grow">${esc(m.away)}</span></div>
+          <span class="grow">${esc(m.away)}</span>${fin && m.sheet ? '<span class="mini" style="margin-left:4px">›</span>' : ''}</div>
           ${!fin ? `<div class="tiny muted" style="text-align:center;margin:-6px 0 6px">${m.day ? `${fmtWhen(m.day + 'T12:00', false)}${m.hora ? ' · ' + esc(m.hora) + ' h' : ''}${m.cancha ? ' · Cancha ' + esc(m.cancha) : ''}` : 'Sin programar'}</div>` : ''}`; }).join('') || '<p class="muted small" style="padding:10px 0">Sin partidos cargados.</p>'}</div>
     </div>
     ${pl.length ? `<div class="section"><div class="section-title"><h2>Planilla oficial</h2>${isAdmin() ? '<button class="link" id="lg-link">Vincular jugadores</button>' : ''}</div>
       <div class="sheetwrap"><table class="pl"><thead><tr><th class="l">Jugador</th><th>PJ</th><th>⚽</th><th>🟨</th><th>🟥</th><th>⭐</th></tr></thead><tbody>
         ${pl.map(p => { const m = linked(p.id); return `<tr><td class="l${m && m.id === meId() ? ' me' : ''}">${esc(p.name)}${m ? `<br><span class="mini">${esc(m.name)}</span>` : ''}</td><td>${p.pj}</td><td>${p.goles || '·'}</td><td>${p.amarillas || '·'}</td><td>${p.rojas || '·'}</td><td>${p.figura || '·'}</td></tr>`; }).join('')}
       </tbody></table></div>
-      <p class="tiny muted" style="margin-top:6px">Datos de la planilla oficial del torneo. Se actualizan solos los sábados a la noche.</p></div>` : ''}
+      <p class="tiny muted" style="margin-top:6px">Datos de la planilla oficial del torneo. Se actualizan solos los sábados a la noche. Tocá un partido del fixture para ver su resumen, o un equipo para ver su informe.</p></div>` : ''}
     ${lgStatsHTML()}
     ${isDT() ? '<button class="link muted" id="lg-set" style="display:block;margin:20px auto 0">Cambiar el torneo conectado</button>' : ''}`;
   $$('[data-ls]', box).forEach(b => b.onclick = () => { S.lgStat = b.dataset.ls; tablaTorneo(box); });
   $$('[data-fe]', box).forEach(b => b.onclick = () => { S.lgFecha = b.dataset.fe; tablaTorneo(box); });
+  $$('[data-rv]', box).forEach(b => b.onclick = () => rivalSheet(b.dataset.rv));
+  $$('[data-lm]', box).forEach(b => b.onclick = () => matchSummarySheet(b.dataset.lm));
+  $$('.statrow[role=button]', box).forEach(b => b.onkeydown = (e) => { if (e.key === 'Enter') b.click(); });
   const r = $('#lg-ref', box); if (r) r.onclick = async () => {
     try { await rpc('fc_league_refresh', { ...P(), p_team: S.teamId }); toast('Pedido enviado. En un par de minutos se actualiza.', 3500); r.disabled = true; setTimeout(refresh, 150000); } catch(e){ toast(e.message, 3500); }
   };
   const s = $('#lg-set', box); if (s) s.onclick = leagueSetSheet;
   const k = $('#lg-link', box); if (k) k.onclick = linkPlayersSheet;
 }
+/* ============ Rivales y resumen de cada fecha ============ */
+// Con la planilla oficial de cada partido salen el informe de cada rival y el resumen de cada fecha, listos para mandar al grupo.
+const shortName = (n) => { const p = String(n || '').trim().split(/\s+/); return p.length > 1 ? `${p[0][0]}. ${p.slice(1).join(' ')}` : (p[0] || ''); };
+const fechaLbl = (f) => String(f || '').replace(/^FECHA\s*/i, 'Fecha ');
+const lgMatch = (id) => LG() && LG().matches.find(m => m.id === +id);
+const lgMatchOf = (x) => x && x.ext_id && lgMatch(x.ext_id);
+const lgPlayed = (id) => LG().matches.filter(m => m.status === 'FINA' && (m.home_id === id || m.away_id === id)).sort((a,b) => (a.n || 0) - (b.n || 0) || (a.day || '').localeCompare(b.day || ''));
+function lgTeam(id){
+  const s = LG().standings.find(x => x.id === id); if (s) return s;
+  const m = LG().matches.find(x => x.home_id === id || x.away_id === id);
+  return { id, name: m ? (m.home_id === id ? m.home : m.away) : '¿?', pj: 0, pg: 0, pe: 0, pp: 0, gf: 0, gc: 0, pts: 0 };
+}
+// Un partido visto desde un equipo: sus goles, los del rival y la planilla de cada lado.
+function lgView(m, id){
+  const h = m.home_id === id, sh = m.sheet || {};
+  return { m, gf: h ? m.gh : m.ga, gc: h ? m.ga : m.gh, opp: h ? m.away : m.home, oppId: h ? m.away_id : m.home_id, own: (h ? sh.h : sh.a) || [], rival: (h ? sh.a : sh.h) || [] };
+}
+const lgRes = (v) => v.gf > v.gc ? 'G' : v.gf < v.gc ? 'P' : 'E';
+// El plantel de un equipo sumando las planillas de todos sus partidos.
+function lgSquad(id){
+  const by = {};
+  lgPlayed(id).forEach(m => lgView(m, id).own.forEach(p => {
+    const o = by[p.id || p.n] || (by[p.id || p.n] = { n: p.n, nro: p.nro, pj: 0, g: 0, am: 0, az: 0, ro: 0, fig: 0 });
+    o.pj++; o.g += p.g || 0; o.am += p.am || 0; o.az += p.az || 0; o.ro += p.ro || 0; o.fig += p.fig ? 1 : 0; if (p.nro != null) o.nro = p.nro;
+  }));
+  return Object.values(by);
+}
+// Partido esperado: el ataque de cada uno contra la defensa del otro, comparado con el promedio del torneo (Poisson).
+function lgExpect(us, them){
+  const st = LG().standings.filter(s => s.pj), tot = st.reduce((a, s) => a + s.pj, 0);
+  if (!us || !them || !us.pj || !them.pj || !tot) return null;
+  const avg = st.reduce((a, s) => a + s.gf, 0) / tot || 1;
+  // Con pocas fechas jugadas, cada promedio se tira un poco hacia el del torneo (como si hubiera 3 partidos promedio más).
+  const r = (g, pj) => (g + avg * 3) / (pj + 3);
+  const a = Math.max(.2, r(us.gf, us.pj) * r(them.gc, them.pj) / avg), b = Math.max(.2, r(them.gf, them.pj) * r(us.gc, us.pj) / avg);
+  const pois = (x, k) => { let p = Math.exp(-x); for (let i = 1; i <= k; i++) p *= x / i; return p; };
+  let w = 0, d = 0, l = 0;
+  for (let i = 0; i <= 12; i++) for (let j = 0; j <= 12; j++){ const p = pois(a, i) * pois(b, j); if (i > j) w += p; else if (i === j) d += p; else l += p; }
+  const s = w + d + l;
+  return { a, b, w: w / s, d: d / s, l: l / s };
+}
+const lgLevel = (e) => e.w >= .5 ? ['✅', 'Accesible', 'ok'] : e.l >= .45 ? ['🔥', 'Bravo', 'coral'] : ['⚖️', 'Parejo', 'gold'];
+const pct = (x) => Math.round(x * 100) + '%';
+const lgPending = () => LG().matches.filter(m => m.status !== 'FINA' && (isUs(m.home_id) || isUs(m.away_id))).sort((a,b) => (a.n || 0) - (b.n || 0));
+
+function lgPendingHTML(){
+  const L = LG(), us = L.standings.find(s => isUs(s.id)), pend = lgPending();
+  if (!pend.length || !us) return '';
+  const leader = L.standings[0];
+  return `<div class="section"><div class="section-title"><h2>Lo que nos queda</h2><span class="small muted">${plural(pend.length, 'partido', 'partidos')}</span></div>
+    <p class="small muted" style="margin:-4px 0 10px">${pend.length * 3} puntos en juego: podemos llegar a ${us.pts + pend.length * 3}.${leader && !isUs(leader.id) ? ` El puntero, ${esc(leader.name)}, tiene ${leader.pts}.` : ' Vamos punteros.'}</p>
+    <div class="list">${pend.map(m => { const v = lgView(m, L.team_ext_id), t = lgTeam(v.oppId), e = lgExpect(us, t), lv = e && lgLevel(e);
+      return `<button class="lrow" data-rv="${v.oppId}" style="align-items:center"><span class="t"><b>${esc(t.name)}</b><small>${esc(fechaLbl(m.fecha))} · ${m.day ? fmtWhen(m.day + 'T12:00', false) + (m.hora ? ' · ' + esc(m.hora) + ' h' : '') : 'sin fecha todavía'}${t.pos ? ` · ${t.pos}º con ${t.pts} pts` : ''}</small><span style="display:block;margin-top:6px">${formDots(lgForm(t.id))}</span></span>${lv ? `<span class="pill ${lv[2]}">${lv[0]} ${lv[1]}</span>` : ''}</button>`; }).join('')}</div>
+    <p class="tiny muted" style="margin-top:6px">Tocá un equipo (acá o en la tabla) para ver su informe.</p></div>`;
+}
+
+function rivalSheet(id){
+  id = +id;
+  const L = LG(), t = lgTeam(id), me = L.team_ext_id, us = L.standings.find(s => isUs(s.id)), name = S.T.team.name;
+  const played = lgPlayed(id), views = played.map(m => lgView(m, id));
+  const e = !isUs(id) && lgExpect(us, t), lv = e && lgLevel(e);
+  const h2h = views.filter(v => v.oppId === me);
+  const ourBy = {}; lgPlayed(me).forEach(m => { const v = lgView(m, me); (ourBy[v.oppId] = ourBy[v.oppId] || []).push(v); });
+  const common = isUs(id) ? [] : views.filter(v => v.oppId !== me && ourBy[v.oppId]).map(v => ({ them: v, us: ourBy[v.oppId][0] }));
+  const sq = lgSquad(id), withSheet = played.filter(m => m.sheet).length;
+  const scorers = sq.filter(p => p.g).sort((a,b) => b.g - a.g || a.pj - b.pj).slice(0, 6);
+  const figs = sq.filter(p => p.fig).sort((a,b) => b.fig - a.fig).slice(0, 3);
+  const cards = sq.filter(p => p.am + p.az + p.ro).sort((a,b) => (b.ro * 3 + b.az * 2 + b.am) - (a.ro * 3 + a.az * 2 + a.am)).slice(0, 5);
+  const susp = (L.suspended || []).filter(s => s.team_id === id);
+  const clean = views.filter(v => v.gc === 0).length, big = views.filter(v => v.gf - v.gc >= 3).length;
+  const scoreCls = (v) => ({ G: 'r-hi', E: 'r-ok', P: 'r-lo' }[lgRes(v)]);
+  const pl = (p, val) => `<div class="lrow" style="padding:7px 12px"><span class="mini" style="width:26px;text-align:center">${p.nro != null ? p.nro : ''}</span><span class="t"><b>${esc(p.n)}</b><small>${plural(p.pj, 'partido', 'partidos')}</small></span><span class="num" style="font-size:18px;font-weight:900">${val}</span></div>`;
+  const el = openSheet(`<div class="mini">${isUs(id) ? 'Nuestro informe' : 'Informe del rival'}</div>
+    <h2 style="margin-top:2px">${esc(t.name)}</h2>
+    <p class="muted" style="margin:2px 0 8px">${t.pos ? `${t.pos}º · ${t.pts} pts · ` : ''}${t.pg}G ${t.pe}E ${t.pp}P · ${t.gf} a favor, ${t.gc} en contra</p>
+    ${played.length ? `<div class="row" style="gap:10px;align-items:center"><span class="mini">Últimos</span>${formDots(lgForm(id), true)}</div>` : ''}
+    <div class="kpis section"><div><b>${fmt1(t.pj ? t.gf / t.pj : 0)}</b><span>Goles x PJ</span></div><div><b>${fmt1(t.pj ? t.gc / t.pj : 0)}</b><span>Recibe x PJ</span></div><div><b>${clean}</b><span>Vallas en 0</span></div><div><b>${sq.length || '—'}</b><span>Jugadores usados</span></div></div>
+    ${susp.length ? `<div class="banner coral section">🟥 <span>No juegan: ${susp.map(s => `<b>${esc(s.name)}</b> (${plural(s.fechas, 'fecha', 'fechas')})`).join(', ')}</span></div>` : ''}
+    ${e ? `<div class="card section"><h3>🔮 Partido esperado</h3>
+      <div class="row" style="margin:8px 0 6px;gap:8px;align-items:center"><b style="flex:1;min-width:0">${esc(name)}</b><span class="num" style="font-size:26px;font-weight:900;white-space:nowrap">${fmt1(e.a)} - ${fmt1(e.b)}</span><b style="flex:1;min-width:0;text-align:right">${esc(t.name)}</b></div>
+      <div style="display:flex;height:12px;border-radius:8px;overflow:hidden;margin:6px 0"><span style="width:${pct(e.w)};background:var(--grass)"></span><span style="width:${pct(e.d)};background:var(--gold)"></span><span style="width:${pct(e.l)};background:var(--coral)"></span></div>
+      <div class="row between small"><span>Ganar <b>${pct(e.w)}</b></span><span>Empate <b>${pct(e.d)}</b></span><span>Perder <b>${pct(e.l)}</b></span></div>
+      <p class="tiny muted" style="margin-top:8px">${lv[0]} ${lv[1]}. Sale de los goles a favor y en contra de cada uno en el torneo: es una estimación, no un resultado.</p></div>` : ''}
+    ${scorers.length ? `<div class="section"><div class="section-title"><h2>⚽ Sus goleadores</h2></div><div class="list">${scorers.map(p => pl(p, p.g)).join('')}</div>
+      ${t.gf && scorers.length ? `<p class="tiny muted" style="margin-top:6px">${scorers[0].g >= t.gf * .4 ? `Ojo con ${esc(shortName(scorers[0].n))}: hizo ${scorers[0].g} de los ${t.gf} goles del equipo.` : `Los goles están repartidos: ${plural(sq.filter(p => p.g).length, 'jugador', 'jugadores')} distintos hicieron goles.`}</p>` : ''}</div>` : ''}
+    ${figs.length ? `<div class="section"><div class="section-title"><h2>⭐ Sus figuras</h2></div><div class="list">${figs.map(p => pl(p, p.fig)).join('')}</div></div>` : ''}
+    ${cards.length ? `<div class="section"><div class="section-title"><h2>🟨 Tarjetas</h2></div><div class="list">${cards.map(p => pl(p, `${'🟨'.repeat(Math.min(p.am, 4))}${'🟦'.repeat(p.az)}${'🟥'.repeat(p.ro)}`)).join('')}</div></div>` : ''}
+    ${h2h.length ? `<div class="section"><div class="section-title"><h2>🆚 Contra nosotros</h2></div><div class="list">${h2h.map(v => { const u = lgView(v.m, me); return `<button class="lrow" data-lm="${v.m.id}" style="padding:9px 12px"><span class="t"><b>${esc(fechaLbl(v.m.fecha))}</b><small>${lgRes(u) === 'G' ? 'Ganamos' : lgRes(u) === 'P' ? 'Perdimos' : 'Empatamos'}</small></span><span class="rate ${scoreCls(u)}" style="font-size:18px">${u.gf}-${u.gc}</span></button>`; }).join('')}</div></div>` : ''}
+    ${common.length ? `<div class="section"><div class="section-title"><h2>Rivales en común</h2></div>
+      <div class="sheetwrap"><table class="pl tight"><thead><tr><th class="l">Contra</th><th>${esc(name)}</th><th>${esc(t.name)}</th></tr></thead><tbody>
+      ${common.map(c => `<tr><td class="l">${esc(c.them.opp)}</td><td><span class="rate ${scoreCls(c.us)}" style="font-size:15px">${c.us.gf}-${c.us.gc}</span></td><td><span class="rate ${scoreCls(c.them)}" style="font-size:15px">${c.them.gf}-${c.them.gc}</span></td></tr>`).join('')}
+      </tbody></table></div><p class="tiny muted" style="margin-top:6px">Cómo le fue a cada uno contra los mismos equipos.</p></div>` : ''}
+    ${views.length ? `<div class="section"><div class="section-title"><h2>Sus partidos</h2>${big ? `<span class="small muted">${plural(big, 'goleada', 'goleadas')} a favor</span>` : ''}</div><div class="list">${views.map(v => `<button class="lrow" data-lm="${v.m.id}" style="padding:9px 12px"><span class="t"><b>vs ${esc(v.opp)}</b><small>${esc(fechaLbl(v.m.fecha))}${v.m.sheet ? ' · ver planilla' : ''}</small></span><span class="rate ${scoreCls(v)}" style="font-size:18px">${v.gf}-${v.gc}</span></button>`).join('')}</div></div>` : '<p class="muted small section">Todavía no jugó partidos en el torneo.</p>'}
+    ${played.length && !withSheet ? '<p class="tiny muted section">Las planillas de los partidos se están cargando: en un rato aparecen goleadores y tarjetas.</p>' : ''}
+    <div class="grid2 section"><a class="btn sm" style="width:100%;text-decoration:none" href="${wa(rivalText(id))}" target="_blank" rel="noopener">📲 Mandar al grupo</a><button class="btn ghost sm" style="width:100%" id="rv-copy">Copiar informe</button></div>`);
+  $$('[data-lm]', el).forEach(b => b.onclick = () => { closeSheet(); setTimeout(() => matchSummarySheet(b.dataset.lm), 80); });
+  $('#rv-copy', el).onclick = async () => { (await copy(rivalText(id))) ? toast('Informe copiado. Pegalo en el grupo.') : toast('No se pudo copiar'); };
+}
+function rivalText(id){
+  const L = LG(), t = lgTeam(id), us = L.standings.find(s => isUs(s.id)), sq = lgSquad(id), me = L.team_ext_id;
+  const e = !isUs(id) && lgExpect(us, t);
+  const susp = (L.suspended || []).filter(s => s.team_id === id);
+  const sc = sq.filter(p => p.g).sort((a,b) => b.g - a.g).slice(0, 4), fg = sq.filter(p => p.fig).sort((a,b) => b.fig - a.fig).slice(0, 2);
+  const cd = sq.filter(p => p.am >= 2 || p.ro || p.az).sort((a,b) => (b.ro * 3 + b.az * 2 + b.am) - (a.ro * 3 + a.az * 2 + a.am)).slice(0, 3);
+  const ourBy = {}; lgPlayed(me).forEach(m => { const v = lgView(m, me); ourBy[v.oppId] = v; });
+  const common = lgPlayed(id).map(m => lgView(m, id)).filter(v => v.oppId !== me && ourBy[v.oppId]).slice(0, 4);
+  const lines = [`🔎 *Informe del rival: ${t.name}*`,
+    `📊 ${t.pos ? `${t.pos}º · ${t.pts} pts · ` : ''}${t.pg}G ${t.pe}E ${t.pp}P · GF ${t.gf} · GC ${t.gc}`,
+    lgForm(id).length ? `📈 Últimos: ${lgForm(id).map(f => ({ G: '🟢', E: '🟡', P: '🔴' }[f.r])).join('')}` : '',
+    sc.length ? `⚽ Goleadores: ${sc.map(p => `${shortName(p.n)} ${p.g}`).join(', ')}` : '',
+    fg.length ? `⭐ Figuras: ${fg.map(p => `${shortName(p.n)} ${p.fig}`).join(', ')}` : '',
+    cd.length ? `🟨 Con tarjetas: ${cd.map(p => `${shortName(p.n)} (${[p.am ? p.am + ' am.' : '', p.az ? p.az + ' az.' : '', p.ro ? p.ro + ' roja' : ''].filter(Boolean).join(', ')})`).join(', ')}` : '',
+    susp.length ? `🟥 No juegan: ${susp.map(s => `${shortName(s.name)} (${plural(s.fechas, 'fecha', 'fechas')})`).join(', ')}` : '',
+    common.length ? `🆚 Rivales en común: ${common.map(v => `${v.opp} (nosotros ${ourBy[v.oppId].gf}-${ourBy[v.oppId].gc}, ellos ${v.gf}-${v.gc})`).join('; ')}` : '',
+    e ? `🔮 Partido esperado: ${S.T.team.name} ${fmt1(e.a)} - ${fmt1(e.b)} · ganar ${pct(e.w)}, empate ${pct(e.d)}, perder ${pct(e.l)}` : ''];
+  return lines.filter(Boolean).join('\n');
+}
+
+function matchSummarySheet(id){
+  const m = lgMatch(id); if (!m) return;
+  const sh = m.sheet || { h: [], a: [] }, fin = m.status === 'FINA';
+  const linked = (p) => p.id && activeMembers().find(x => x.ext_player_id === p.id);
+  const who = (p) => `${esc(shortName(p.n))}${linked(p) ? ` <span class="mini">(${esc(linked(p).name)})</span>` : ''}`;
+  const figs = [...sh.h.filter(p => p.fig).map(p => [p, m.home]), ...sh.a.filter(p => p.fig).map(p => [p, m.away])];
+  const col = (list, team) => {
+    const g = list.filter(p => p.g), c = list.filter(p => p.am || p.az || p.ro);
+    return `<div class="card" style="padding:10px 12px"><div class="mini" style="margin-bottom:6px">${esc(team)}</div>
+      ${g.map(p => `<div style="padding:2px 0">⚽ ${who(p)}${p.g > 1 ? ` <b>x${p.g}</b>` : ''}</div>`).join('') || '<div class="small muted">Sin goles</div>'}
+      ${c.length ? `<div style="margin-top:6px">${c.map(p => `<div class="small" style="padding:2px 0">${p.ro ? '🟥' : p.az ? '🟦' : '🟨'} ${who(p)}</div>`).join('')}</div>` : ''}</div>`;
+  };
+  const roster = (list) => list.slice().sort((a,b) => (a.nro ?? 999) - (b.nro ?? 999)).map(p => `<div class="small" style="padding:2px 0"><span class="mini" style="display:inline-block;width:24px">${p.nro ?? ''}</span>${who(p)}</div>`).join('');
+  const el = openSheet(`<div class="mini">${esc(fechaLbl(m.fecha))}${m.day ? ' · ' + fmtWhen(m.day + 'T12:00', false) : ''}${m.cancha ? ' · Cancha ' + esc(m.cancha) : ''}</div>
+    <div class="scoreboard" style="margin-top:8px;padding:14px"><div class="teams"><span class="tn">${esc(m.home)}</span><span class="sc">${fin ? `${m.gh}-${m.ga}` : 'vs'}</span><span class="tn">${esc(m.away)}</span></div>
+      ${figs.length ? `<div class="meta" style="margin-top:6px">⭐ Figura: ${figs.map(([p, tm]) => `${esc(shortName(p.n))} (${esc(tm)})`).join(', ')}</div>` : ''}</div>
+    ${!fin ? '<p class="muted section">Todavía no se jugó.</p>' : !m.sheet ? '<p class="muted section">La planilla de este partido todavía no está cargada. Suele aparecer un rato después del resultado.</p>' : `
+    <div class="grid2 section" style="align-items:start">${col(sh.h, m.home)}${col(sh.a, m.away)}</div>
+    <details class="section"><summary class="small" style="font-weight:800;cursor:pointer">Quiénes jugaron (${sh.h.length} y ${sh.a.length})</summary>
+      <div class="grid2" style="margin-top:8px;align-items:start"><div>${roster(sh.h)}</div><div>${roster(sh.a)}</div></div></details>`}
+    <div class="grid2 section">${fin ? `<a class="btn sm" style="width:100%;text-decoration:none" href="${wa(matchSummaryText(m))}" target="_blank" rel="noopener">📲 Mandar al grupo</a>` : ''}<button class="btn ghost sm" style="width:100%" id="ms-rv">🔎 ${isUs(m.home_id) || isUs(m.away_id) ? 'Informe del rival' : 'Ver ' + esc(m.home)}</button></div>`);
+  $('#ms-rv', el).onclick = () => { closeSheet(); setTimeout(() => rivalSheet(isUs(m.home_id) ? m.away_id : m.home_id), 80); };
+}
+function matchSummaryText(m){
+  const sh = m.sheet || { h: [], a: [] };
+  const goals = (list) => list.filter(p => p.g).map(p => shortName(p.n) + (p.g > 1 ? ` x${p.g}` : '')).join(', ');
+  const cards = [...sh.h.map(p => [p, m.home]), ...sh.a.map(p => [p, m.away])].filter(([p]) => p.am || p.az || p.ro);
+  const figs = [...sh.h.filter(p => p.fig).map(p => [p, m.home]), ...sh.a.filter(p => p.fig).map(p => [p, m.away])];
+  return [`*${fechaLbl(m.fecha)} · ${m.home} ${m.gh}-${m.ga} ${m.away}*`,
+    goals(sh.h) ? `⚽ ${m.home}: ${goals(sh.h)}` : '',
+    goals(sh.a) ? `⚽ ${m.away}: ${goals(sh.a)}` : '',
+    figs.length ? `⭐ Figura: ${figs.map(([p, t]) => `${shortName(p.n)} (${t})`).join(', ')}` : '',
+    cards.length ? `${cards.map(([p, t]) => `${p.ro ? '🟥' : p.az ? '🟦' : '🟨'} ${shortName(p.n)} (${t})`).join(', ')}` : ''].filter(Boolean).join('\n');
+}
+
 function leagueSetSheet(){
   const L = LG();
   const el = openSheet(`<h2>Torneo oficial</h2><p class="muted">Funciona con los torneos hechos con Todo Torneos (como Alto Nono). La app trae sola la tabla, el fixture, los resultados y la planilla.</p>
@@ -2637,12 +2816,16 @@ function pinSheet(){
 }
 function inviteSheet(){
   const t = S.T.team, dt = isDT();
+  const ms = missingPlayers();
   const el = openSheet(`<h2>Invitar a ${esc(t.name)}</h2>
+    <p class="muted">Mandalo al grupo de WhatsApp: el link aparece con el nombre del equipo y cada uno toca su nombre en el plantel.</p>
     <div class="card section"><div class="mini">Jugadores</div><div class="row between" style="margin-top:6px"><span class="invcode">${esc(t.code)}</span></div>
       <div class="grid2" style="margin-top:12px"><a class="btn sm" style="width:100%;text-decoration:none" href="${wa(inviteText())}" target="_blank" rel="noopener">WhatsApp</a><button class="btn ghost sm" style="width:100%" id="iv-c">Copiar</button></div></div>
     ${dt ? `<div class="card section"><div class="mini">Cuerpo técnico (entran como DT)</div><div class="row between" style="margin-top:6px"><span class="invcode" style="background:var(--gold-soft);color:var(--gold-ink)">${esc(t.dt_code)}</span></div>
       <p class="small muted" style="margin-top:8px">Pasalo solo a quien dirige con vos: puede editar todo y ver todos los puntajes.</p>
-      <button class="btn ghost sm" style="width:100%;margin-top:10px" id="iv-dc">Copiar link de DT</button></div>` : ''}`);
+      <button class="btn ghost sm" style="width:100%;margin-top:10px" id="iv-dc">Copiar link de DT</button></div>` : ''}
+    ${ms.length && ms.length < players().length ? `<div class="card section"><div class="mini">Faltan entrar (${ms.length})</div><p class="small" style="margin:6px 0 10px">${ms.map(m => esc(m.name)).join(', ')}</p>
+      <a class="btn ghost sm" style="width:100%;text-decoration:none" href="${wa(nudgeText())}" target="_blank" rel="noopener">📣 Avisarles en el grupo</a></div>` : ''}`);
   $('#iv-c', el).onclick = async () => { (await copy(inviteText())) ? toast('Invitación copiada') : toast(inviteLink(t.code), 6000); };
   const dc = $('#iv-dc', el); if (dc) dc.onclick = async () => { const s = `${t.emoji} Te sumo como cuerpo técnico de ${t.name} en La Casaca:\n${inviteLink(t.dt_code)}`; (await copy(s)) ? toast('Link de DT copiado') : toast(inviteLink(t.dt_code), 6000); };
 }

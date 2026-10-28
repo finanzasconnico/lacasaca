@@ -23,3 +23,11 @@ Estas partes ya están cargadas en la base (proyecto racha-app). Quedan anotadas
 - Cada ejercicio trae series, un consejo y un link a videos de YouTube de ese ejercicio.
 - `fc_routines`: las rutinas propias del equipo (copias ajustadas o creadas desde cero). Funciones `fc_routines_list` y `fc_routine_save` (se archivan, no se borran).
 - `fc_trainings.plan`: la rutina completa que se mandó con cada entrenamiento.
+
+## Planilla de cada partido (rivales y resúmenes)
+- `fc_league_matches.sheet`: la planilla oficial de cada partido terminado (quiénes jugaron, goles, tarjetas y figura de los dos equipos). Solo nombre, número y lo que pasó en la cancha.
+- La pide sola `fc_league_process` después de cada actualización del fixture (ver `rivales.sql`).
+- Con eso la app arma el informe de cada rival y el resumen de cada fecha.
+
+## Invitaciones por WhatsApp
+- `api/i.js` (Vercel): el link `/i/CODIGO` muestra en WhatsApp el escudo y el nombre del equipo, y después abre la app con el código.
