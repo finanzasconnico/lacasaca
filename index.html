@@ -48,6 +48,7 @@
   }
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+[hidden]{display:none!important}
 html,body{margin:0;background:var(--bg);color:var(--ink);-webkit-text-size-adjust:100%}
 body{font-family:var(--f-body);font-size:16px;line-height:1.4;min-height:100dvh;overscroll-behavior-y:none}
 button,input,select,textarea{font:inherit;color:inherit}
@@ -227,6 +228,8 @@ table.pl th.sort{cursor:pointer}
 table.pl th.sort.on{color:var(--grass-ink)}
 table.pl td .cell{display:inline-block;min-width:32px;border-radius:8px;padding:2px 4px;font-family:var(--f-num);font-weight:800;font-size:16px}
 table.pl tr:last-child td{border-bottom:0}
+table.pl.tight th,table.pl.tight td{padding:7px 5px}
+table.pl.tight th.l,table.pl.tight td.l{max-width:130px}
 table.pl td.me{font-weight:800}
 
 /* Pizarra */
@@ -288,6 +291,12 @@ nav.tabs button.on{color:var(--grass)}
 .dtrow .stepper button{width:40px;height:40px}
 .dtrow .stepper output{min-width:48px;font-size:22px}
 .mini{font-size:12px;font-weight:700;color:var(--muted)}
+.bar{display:block;height:8px;border-radius:99px;background:var(--line);overflow:hidden}
+.bar i{display:block;height:100%;border-radius:99px;background:var(--grass)}
+.photo{display:grid;place-items:center;min-height:180px;border:2px dashed var(--line);border-radius:20px;background:var(--card);overflow:hidden;cursor:pointer}
+.photo img{width:100%;max-height:60dvh;object-fit:contain;display:block}
+.photo .pd{display:flex;flex-direction:column;align-items:center;gap:4px;padding:20px;text-align:center;font-size:40px}
+.photo .pd b{font-size:16px}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
 </head>
@@ -351,9 +360,10 @@ const ICONS = {
   partidos: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M8 3v4M16 3v4M3 10h18"/><circle cx="12" cy="15.5" r="2.2"/></svg>',
   pizarra: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2.5" width="16" height="19" rx="2"/><path d="M4 12h16"/><circle cx="12" cy="12" r="3"/><path d="M9 2.5v3h6v-3M9 21.5v-3h6v3"/></svg>',
   plantel: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3h8l1.5 3.5L21 8l-2 5-2.2-.8V21H7.2v-8.8L5 13 3 8l3.5-1.5z"/><path d="M10 3a2 2 0 0 0 4 0"/></svg>',
+  entrenos: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13.5" r="7.5"/><path d="M12 9.5v4l2.6 2.2M9.5 2.5h5M12 2.5V6M18.5 6.5l1.5-1.5"/></svg>',
   tabla: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21V11M10 21V4M16 21v-7M22 21H2"/></svg>'
 };
-const TABS = [['inicio','Inicio'],['partidos','Partidos'],['pizarra','Pizarra'],['plantel','Plantel'],['tabla','Tabla']];
+const TABS = [['inicio','Inicio'],['partidos','Partidos'],['entrenos','Entrenos'],['plantel','Plantel'],['tabla','Tabla']];
 const LOGO = `<svg viewBox="0 0 100 100" aria-hidden="true"><rect width="100" height="100" rx="24" fill="#0E7A3B"/><path d="M31 18l11-4c2 6 14 6 16 0l11 4 16 14-8 12-8-5v46H31V39l-8 5-8-12z" fill="#D8F23A" stroke="#B5CF1E" stroke-width="1.5" stroke-linejoin="round"/><path d="M42 14c2 6 14 6 16 0" fill="none" stroke="#0E7A3B" stroke-width="3" stroke-linecap="round"/><text x="50" y="72" text-anchor="middle" font-family="Big Shoulders Display,Bricolage Grotesque,sans-serif" font-weight="900" font-size="34" fill="#0E7A3B">10</text></svg>`;
 
 /* ============ Fútbol: posiciones, formaciones y atributos ============ */
@@ -401,7 +411,12 @@ const ERRORS = {
   PIN_INVALIDO: 'El PIN son 4 números.',
   VOTACION_CERRADA: 'La votación de este partido ya cerró.',
   AUTOVOTO: 'No te podés votar a vos mismo 😅',
-  ULTIMO_DT: 'Sos el único DT. Antes de irte, pasale el rol a otro.'
+  ULTIMO_DT: 'Sos el único DT. Antes de irte, pasale el rol a otro.',
+  SIN_TORNEO: 'Este equipo todavía no tiene un torneo conectado.',
+  RECIEN_ACTUALIZADO: 'Se actualizó hace menos de 10 minutos. Probá en un rato.',
+  LINK_INVALIDO: 'Revisá el link (tiene que tener idTorneo=…) y el nombre del equipo.',
+  FALTA_FOTO: 'Este entrenamiento pide una foto de prueba 📸',
+  FOTO_MUY_GRANDE: 'La foto es muy pesada. Probá con otra.'
 };
 let netOnline = true;
 async function rpc(fn, args={}){
@@ -457,10 +472,16 @@ async function loadTeam(){
   if (!teams.length){ S.T = null; return; }
   if (!teams.find(t => t.id === S.teamId)) S.teamId = teams[0].id;
   LS.set('casaca_team', S.teamId);
-  try { S.T = await rpc('fc_team', { ...P(), p_team: S.teamId }); LS.set('casaca_t_' + S.teamId, JSON.stringify(S.T)); }
+  try {
+    const [T, TR] = await Promise.all([rpc('fc_team', { ...P(), p_team: S.teamId }), rpc('fc_trainings_list', { ...P(), p_team: S.teamId }).catch(() => null)]);
+    S.T = T; S.TR = TR || { trainings: [], logs: [] };
+    S.LG = T.team.league ? await rpc('fc_league', { ...P(), p_team: S.teamId }).catch(() => S.LG) : null;
+    LS.set('casaca_lg_' + S.teamId, JSON.stringify(S.LG));
+    LS.set('casaca_t_' + S.teamId, JSON.stringify(S.T)); LS.set('casaca_tr_' + S.teamId, JSON.stringify(S.TR));
+  }
   catch(e){
     const c = e.offline && LS.get('casaca_t_' + S.teamId);
-    if (c){ S.T = JSON.parse(c); } else throw e;
+    if (c){ S.T = JSON.parse(c); S.LG = JSON.parse(LS.get('casaca_lg_' + S.teamId) || 'null'); S.TR = JSON.parse(LS.get('casaca_tr_' + S.teamId) || '{"trainings":[],"logs":[]}'); } else throw e;
   }
 }
 async function refresh(){ try { await loadTeam(); } catch(e){ toast(e.message); } render(); }
@@ -491,6 +512,7 @@ function agg(mid){
   const rows = S.T.stats.filter(s => s.member_id === mid && s.played && played.has(s.match_id));
   const rs = rows.map(s => s.dt_rating).filter(r => r != null).map(Number);
   const figs = playedMatches().filter(x => mvpOf(x).includes(mid)).length;
+  const tc = trainCompliance(mid);
   return {
     pj: rows.length,
     goals: rows.reduce((a,s) => a + s.goals, 0),
@@ -499,7 +521,8 @@ function agg(mid){
     red: rows.filter(s => s.red).length,
     avg: rs.length ? rs.reduce((a,b) => a+b, 0) / rs.length : null,
     rated: rs.length, figs,
-    att: played.size ? rows.length / played.size : null
+    att: played.size ? rows.length / played.size : null,
+    tdone: tc.done, tcount: tc.count, ent: tc.count ? Math.round(tc.done / tc.count * 100) : null
   };
 }
 // Puntaje sugerido (1–100) a partir de lo que pasó en la cancha. El DT decide si lo usa.
@@ -520,7 +543,7 @@ const STATUS = { ok: ['✅','Disponible'], lesionado: ['🤕','Lesionado'], ause
 async function boot(){
   const q = new URLSearchParams(location.search);
   if (q.get('e')) S.pendingJoin = q.get('e').toUpperCase();
-  if (TABS.some(t => t[0] === q.get('tab'))) S.tab = q.get('tab');
+  if (TABS.some(t => t[0] === q.get('tab')) || q.get('tab') === 'pizarra') S.tab = q.get('tab');
   if (q.toString()) history.replaceState(null, '', location.pathname);
   if (!S.token){ renderWelcome(); return; }
   try { await loadMe(); }
@@ -725,11 +748,12 @@ function render(){
       <button class="av" id="me-av" style="background:${avColor(S.me.user.nick)}" aria-label="Mi perfil">${esc(initials(meM ? meM.name : S.me.user.nick))}</button>
     </div></div>
     <main class="wrap" id="main"></main>
-    <nav class="tabs" aria-label="Secciones"><div class="inner">${TABS.map(([k,l]) => `<button data-tab="${k}" class="${S.tab === k ? 'on' : ''}" aria-current="${S.tab === k ? 'page' : 'false'}">${ICONS[k]}${l}</button>`).join('')}</div></nav>`;
+    <nav class="tabs" aria-label="Secciones"><div class="inner">${TABS.map(([k,l]) => { const on = S.tab === k || (k === 'partidos' && S.tab === 'pizarra'); return `<button data-tab="${k}" class="${on ? 'on' : ''}" aria-current="${on ? 'page' : 'false'}">${ICONS[k]}${l}</button>`; }).join('')}</div></nav>`;
   $('#teamsel').onclick = teamsSheet;
   $('#me-av').onclick = profileSheet;
-  $$('nav.tabs button').forEach(b => b.onclick = () => { S.tab = b.dataset.tab; S.matchId = null; render(); scrollTo(0,0); });
-  ({ inicio: renderInicio, partidos: renderPartidos, pizarra: renderPizarra, plantel: renderPlantel, tabla: renderTabla })[S.tab]();
+  $$('nav.tabs button').forEach(b => b.onclick = () => { S.tab = b.dataset.tab; S.matchId = null; S.trainId = null; render(); scrollTo(0,0); });
+  ({ inicio: renderInicio, partidos: renderPartidos, pizarra: renderPizarra, entrenos: renderEntrenos, plantel: renderPlantel, tabla: renderTabla })[S.tab]();
+  const pb = $('#pz-back'); if (pb) pb.onclick = () => { S.tab = 'partidos'; render(); scrollTo(0,0); };
 }
 function renderNoTeam(){
   $('#app').innerHTML = `<div class="welcome">
@@ -809,6 +833,8 @@ function renderInicio(){
       <button class="link" id="nx-open" style="color:#fff;margin-top:10px;text-decoration:underline">Ver convocatoria</button>
     </div>` : `<div class="card empty"><div class="big">🗓️</div><h3>No hay partidos en agenda</h3><p class="muted small" style="margin-top:4px">${isAdmin() ? 'Cargá el próximo y el plantel confirma desde acá.' : 'Cuando el DT cargue el próximo, confirmás desde acá.'}</p>${isAdmin() ? '<button class="btn sm" id="nx-new" style="margin-top:12px">＋ Cargar partido</button>' : ''}</div>`}
 
+    ${trainPendingForMe().length ? `<div class="section"><div class="section-title"><h2>Entrenamiento pendiente</h2><button class="link" id="go-tr">Ver todos</button></div><div class="list">${trainPendingForMe().slice(0, 2).map(trainCard).join('')}</div></div>` : ''}
+
     ${pend.length && m && m.plays ? `<div class="section"><div class="section-title"><h2>Cargá tus números</h2></div>
       <p class="muted small" style="margin:-4px 0 10px">Goles, asistencias y tarjetas: cada uno carga lo suyo y el DT solo pone el puntaje.</p>
       <div class="list">${pend.map(x => `<button class="lrow" data-mine="${x.id}"><span style="font-size:24px">✍️</span><span class="t"><b>vs ${esc(x.opponent)}</b><small>${fmtWhen(x.starts_at, false)}</small></span><span class="pill gold">Cargar</span></button>`).join('')}</div></div>` : ''}
@@ -830,6 +856,8 @@ function renderInicio(){
   const mc = $('#my-card'); if (mc) mc.onclick = () => playerSheet(meId());
   $$('[data-mine]').forEach(b => b.onclick = () => myStatsSheet(b.dataset.mine, meId()));
   $$('[data-vote]').forEach(b => b.onclick = () => voteSheet(b.dataset.vote));
+  bindTrainCards($('#main'));
+  const gt = $('#go-tr'); if (gt) gt.onclick = () => { S.tab = 'entrenos'; render(); scrollTo(0,0); };
   bindMatchCards($('#main'));
   bindInvite($('#main'));
 }
@@ -850,7 +878,7 @@ function matchCard(x){
   const myS = S.T.stats.find(s => s.match_id === x.id && s.member_id === meId());
   const mvp = mvpOf(x).map(id => member(id)).filter(Boolean);
   return `<button class="card tap match" data-open="${x.id}" style="padding:12px">
-    <span class="mdate">${d ? `<b>${d.getDate()}</b><small>${MON[d.getMonth()]}</small>` : `<b>#${(S.T.matches.indexOf(x) + 1)}</b><small>fecha</small>`}</span>
+    <span class="mdate">${d ? `<b>${d.getDate()}</b><small>${MON[d.getMonth()]}</small>` : `<b>${x.fecha_label ? x.fecha_label.replace(/\D/g, '') : '#' + (S.T.matches.indexOf(x) + 1)}</b><small>fecha</small>`}</span>
     <span style="min-width:0"><b class="ell" style="display:block;font-size:17px">vs ${esc(x.opponent)}</b>
       <span class="small muted">${x.played ? (mvp.length ? `⭐ ${esc(mvp.map(m => m.name).join(', '))}` : x.kind === 'amistoso' ? 'Amistoso' : 'Jugado') : (d ? fmtWhen(x.starts_at).split(' · ')[1] + (x.venue ? ' · ' + esc(x.venue) : '') : 'A confirmar')}</span>
       ${x.difficulty ? `<span class="stars" style="display:block">${'★'.repeat(x.difficulty)}<i>${'★'.repeat(5 - x.difficulty)}</i></span>` : ''}</span>
@@ -868,13 +896,14 @@ function renderPartidos(){
   const rec = { G: 0, E: 0, P: 0 }; let gf = 0, gc = 0;
   playedMatches().forEach(x => { const r = wdl(x); if (rec[r] != null) rec[r]++; gf += x.goals_for || 0; gc += x.goals_against || 0; });
   $('#main').innerHTML = `
-    <div class="row between" style="margin-bottom:14px"><h1>Partidos</h1>${isAdmin() ? '<button class="btn sm" id="m-new">＋ Partido</button>' : ''}</div>
+    <div class="row between" style="margin-bottom:14px"><h1>Partidos</h1><span class="row" style="gap:8px"><button class="btn ghost sm" id="m-pz">📋 Pizarra</button>${isAdmin() ? '<button class="btn sm" id="m-new">＋ Partido</button>' : ''}</span></div>
     ${done.length ? `<div class="kpis" style="margin-bottom:6px"><div><b>${done.length}</b><span>Jugados</span></div><div><b style="color:var(--grass)">${rec.G}</b><span>Ganados</span></div><div><b style="color:var(--gold)">${rec.E}</b><span>Empates</span></div><div><b style="color:var(--coral)">${rec.P}</b><span>Perdidos</span></div></div>
       <p class="small muted">${gf || gc ? `Goles a favor ${gf} · en contra ${gc}` : ''}${done.some(x => wdl(x) === 'N') ? `${gf || gc ? ' · ' : ''}${plural(done.filter(x => wdl(x) === 'N').length, 'partido sin resultado cargado', 'partidos sin resultado cargado')}` : ''}</p>` : ''}
     ${up.length ? `<div class="section"><div class="section-title"><h2>Se vienen</h2></div><div class="list">${up.map(matchCard).join('')}</div></div>` : ''}
     ${done.length ? `<div class="section"><div class="section-title"><h2>Jugados</h2></div><div class="list">${done.map(matchCard).join('')}</div></div>` : ''}
     ${!S.T.matches.length ? `<div class="card empty"><div class="big">🏟️</div><h3>Todavía no hay partidos</h3><p class="muted small">${isAdmin() ? 'Cargá el primero: rival, día y cancha.' : 'Cuando el DT cargue uno, aparece acá.'}</p></div>` : ''}`;
   const n = $('#m-new'); if (n) n.onclick = () => matchEditSheet(null);
+  $('#m-pz').onclick = () => { S.tab = 'pizarra'; render(); scrollTo(0,0); };
   bindMatchCards($('#main'));
 }
 function renderMatch(id){
@@ -897,7 +926,7 @@ function renderMatch(id){
   $('#main').innerHTML = `
     <button class="back" id="back">← Partidos</button>
     <div class="scoreboard">
-      <div class="meta">${x.kind === 'amistoso' ? 'Amistoso' : 'Oficial'} · ${fmtWhen(x.starts_at)}${x.venue ? ` · ${esc(x.venue)}` : ''}</div>
+      <div class="meta">${x.fecha_label ? esc(x.fecha_label) : x.kind === 'amistoso' ? 'Amistoso' : 'Oficial'} · ${x.starts_at ? fmtWhen(x.starts_at) : x.ext_id && !x.played ? 'Sin programar' : 'Sin fecha'}${x.venue ? ` · ${esc(x.venue)}` : ''}</div>
       <div class="teams"><span class="tn">${esc(T.team.emoji)} ${esc(T.team.name)}</span>
         <span class="sc">${x.played && x.goals_for != null ? `${x.goals_for}-${x.goals_against}` : 'vs'}</span>
         <span class="tn">${esc(x.opponent)}</span></div>
@@ -1109,11 +1138,11 @@ function renderPizarra(){
   const bench = players().filter(m => !used.has(m.id));
   const myNote = PZ.notes[meId()];
   if (!dt && !T.lineups.length){
-    $('#main').innerHTML = `<h1 style="margin-bottom:14px">Pizarra</h1><div class="card empty"><div class="big">📋</div><h3>Todavía no hay equipo armado</h3><p class="muted small">Cuando el DT arme la formación, la ves acá.</p></div>`;
+    $('#main').innerHTML = `<button class="back" id="pz-back">← Partidos</button><h1 style="margin-bottom:14px">Pizarra</h1><div class="card empty"><div class="big">📋</div><h3>Todavía no hay equipo armado</h3><p class="muted small">Cuando el DT arme la formación, la ves acá.</p></div>`;
     return;
   }
   $('#main').innerHTML = `
-    <div class="row between" style="margin-bottom:10px"><h1>Pizarra</h1><button class="btn ghost sm" id="pz-img">📤 Compartir</button></div>
+    <button class="back" id="pz-back">← Partidos</button><div class="row between" style="margin-bottom:10px"><h1>Pizarra</h1><button class="btn ghost sm" id="pz-img">📤 Compartir</button></div>
     ${dt && T.lineups.length ? `<div class="chips scroll" style="margin-bottom:10px">${T.lineups.map(l => `<button class="chip ${l.id === PZ.id ? 'on' : ''}" data-l="${l.id}">${esc(l.name)}</button>`).join('')}<button class="chip" id="pz-new">＋ Nuevo</button></div>` : ''}
     ${!dt ? `<p class="muted small" style="margin:-4px 0 10px">${esc(PZ.name)} · ${PZ.formation}</p>` : ''}
     ${myNote ? `<div class="banner sky" style="margin-bottom:10px">📌 <span><b>Indicación para vos:</b> ${esc(myNote)}</span></div>` : ''}
@@ -1225,6 +1254,234 @@ async function sharePizarra(){
   toast('Imagen descargada. Mandala al grupo.');
 }
 
+/* ============ Entrenamientos ============ */
+// En cancha: cada uno confirma y después el DT toma asistencia. En casa: el DT pone la rutina y cada uno manda la foto como prueba.
+const TRAIN_TEMPLATES = [
+  ['💪 Fuerza en casa', 'Sentadillas 4x15, estocadas 3x12 por pierna, flexiones 4x10, plancha 3x40 s y puente de glúteo 3x15.'],
+  ['🏃 Correr 5 km', 'Trote suave de 5 km (o 30 minutos). Mandá la captura del reloj o de la app.'],
+  ['🧘 Movilidad', '20 minutos: cadera, tobillos, isquios y aductores.'],
+  ['⚽ Técnica con pelota', '20 minutos: jueguitos, conducción con las dos piernas y pases contra la pared.'],
+  ['🛡️ Prevención de lesiones', 'Nórdicos 3x6, Copenhague 3x8 por lado y equilibrio en un pie 3x30 s.']
+];
+const TSTATUS = { voy: ['👍','Va'], no_puedo: ['🙅','No puede'], presente: ['✅','Presente'], ausente: ['❌','Ausente'], hecho: ['✅','Hecho'], rechazado: ['↩️','A rehacer'] };
+const trainings = () => (S.TR && S.TR.trainings) || [];
+const tlog = (tid, mid) => ((S.TR && S.TR.logs) || []).find(l => l.training_id === tid && l.member_id === mid);
+const tWhen = (t) => t.kind === 'cancha' ? t.starts_at : t.due_at;
+// ¿Ya pasó? Cancha: dos horas después del inicio. Casa: cuando vence el plazo.
+const tPast = (t) => { const w = tWhen(t); if (!w) return false; return Date.now() > new Date(w).getTime() + (t.kind === 'cancha' ? 2*36e5 : 0); };
+const tDone = (l) => !!l && (l.status === 'hecho' || l.status === 'presente');
+function trainCompliance(mid){
+  let done = 0, count = 0;
+  trainings().forEach(t => { const l = tlog(t.id, mid); if (tDone(l)){ done++; count++; } else if (tPast(t)) count++; });
+  return { done, count };
+}
+function trainPendingForMe(){
+  const me = member(meId()); if (!me || !me.plays) return [];
+  return trainings().filter(t => {
+    const l = tlog(t.id, meId());
+    if (t.kind === 'casa') return !tDone(l) && !(l && l.status === 'no_puedo') && !tPast(t);
+    return !tPast(t) && !l;
+  }).sort((a,b) => (tWhen(a) ? new Date(tWhen(a)) : Infinity) - (tWhen(b) ? new Date(tWhen(b)) : Infinity));
+}
+function tProgress(t){
+  const pl = players();
+  const done = pl.filter(m => tDone(tlog(t.id, m.id))).length;
+  return { done, total: pl.length };
+}
+function trainCard(t){
+  const l = tlog(t.id, meId()), pr = tProgress(t), w = tWhen(t);
+  const myPill = l ? `<span class="pill ${tDone(l) ? 'ok' : l.status === 'rechazado' || l.status === 'ausente' ? 'coral' : l.status === 'no_puedo' ? '' : 'sky'}">${TSTATUS[l.status][0]} ${TSTATUS[l.status][1]}</span>`
+    : !tPast(t) && member(meId()) && member(meId()).plays ? `<span class="pill gold">${t.kind === 'casa' ? 'Pendiente' : 'Confirmá'}</span>` : '';
+  return `<button class="card tap" data-train="${t.id}" style="padding:12px 14px">
+    <span class="row" style="align-items:flex-start"><span style="font-size:28px;line-height:1">${t.kind === 'casa' ? '🏠' : '🏟️'}</span>
+      <span class="grow"><b class="ell" style="display:block;font-size:17px">${esc(t.title)}</b>
+        <span class="small muted">${t.kind === 'casa' ? (w ? `Hasta el ${fmtWhen(w)}` : 'Sin fecha límite') : fmtWhen(w)}${t.venue ? ' · ' + esc(t.venue) : ''}</span></span>
+      ${t.mandatory ? '<span class="pill coral">Obligatorio</span>' : ''}</span>
+    <span class="row" style="margin-top:10px;gap:10px"><span class="bar grow"><i style="width:${pr.total ? Math.round(pr.done / pr.total * 100) : 0}%"></i></span><span class="mini">${pr.done}/${pr.total} ${t.kind === 'casa' ? 'lo hicieron' : 'fueron'}</span>${myPill}</span>
+  </button>`;
+}
+function bindTrainCards(root){ $$('[data-train]', root).forEach(b => b.onclick = () => openTraining(b.dataset.train)); }
+function openTraining(id){ S.tab = 'entrenos'; S.trainId = id; render(); scrollTo(0,0); }
+function renderEntrenos(){
+  if (S.trainId && trainings().find(t => t.id === S.trainId)) return renderTraining(S.trainId);
+  S.trainId = null;
+  const adm = isAdmin(), me = member(meId()), c = trainCompliance(meId());
+  const pend = trainPendingForMe();
+  const pendIds = new Set(pend.map(t => t.id));
+  const up = trainings().filter(t => !tPast(t) && !pendIds.has(t.id)).sort((a,b) => new Date(tWhen(a) || 0) - new Date(tWhen(b) || 0));
+  const past = trainings().filter(t => tPast(t));
+  $('#main').innerHTML = `
+    <div class="row between" style="margin-bottom:10px"><h1>Entrenos</h1>${adm ? '<button class="btn sm" id="t-new">＋ Entrenamiento</button>' : ''}</div>
+    ${me && me.plays && c.count ? `<div class="kpis" style="grid-template-columns:repeat(3,1fr);margin-bottom:6px"><div><b>${c.done}</b><span>Cumplidos</span></div><div><b>${c.count}</b><span>Cuentan</span></div><div><b style="color:${c.done / c.count >= .8 ? 'var(--grass)' : c.done / c.count >= .5 ? 'var(--gold)' : 'var(--coral)'}">${Math.round(c.done / c.count * 100)}%</b><span>Compromiso</span></div></div>` : ''}
+    ${pend.length ? `<div class="section" style="margin-top:12px"><div class="section-title"><h2>Para hacer</h2></div><div class="list">${pend.map(trainCard).join('')}</div></div>` : ''}
+    ${up.length ? `<div class="section"><div class="section-title"><h2>Se vienen</h2></div><div class="list">${up.map(trainCard).join('')}</div></div>` : ''}
+    ${past.length ? `<div class="section"><div class="section-title"><h2>Anteriores</h2></div><div class="list">${past.map(trainCard).join('')}</div></div>` : ''}
+    ${!trainings().length ? `<div class="card empty"><div class="big">🏋️</div><h3>Todavía no hay entrenamientos</h3><p class="muted small">${adm ? 'Proponé uno en cancha o mandá una rutina para hacer en casa. Si es obligatorio, cada uno manda la foto como prueba.' : 'Cuando el DT proponga uno, aparece acá.'}</p>${adm ? '<button class="btn sm" id="t-new2" style="margin-top:12px">＋ Entrenamiento</button>' : ''}</div>` : ''}`;
+  [$('#t-new'), $('#t-new2')].forEach(b => { if (b) b.onclick = () => trainingEditSheet(null); });
+  bindTrainCards($('#main'));
+}
+function renderTraining(id){
+  const t = trainings().find(x => x.id === id), adm = isAdmin(), me = member(meId());
+  const l = tlog(id, meId()), past = tPast(t), w = tWhen(t);
+  const rows = players().map(m => ({ m, l: tlog(id, m.id) }));
+  const grp = (f) => rows.filter(f).sort((a,b) => a.m.name.localeCompare(b.m.name));
+  const done = grp(o => tDone(o.l)), notOk = grp(o => o.l && ['no_puedo','ausente','rechazado'].includes(o.l.status)), going = grp(o => o.l && o.l.status === 'voy');
+  const pending = grp(o => !o.l);
+  const row = (o, extra = '') => `<div class="lrow" style="padding:8px 10px"><span class="av" style="width:32px;height:32px;font-size:13px;background:${avColor(o.m.name)}">${esc(initials(o.m.name))}</span><span class="t"><b>${esc(o.m.name)}</b>${o.l && (o.l.reason || o.l.note || o.l.minutes) ? `<small>${esc([o.l.minutes ? o.l.minutes + ' min' : '', o.l.reason, o.l.note].filter(Boolean).join(' · '))}</small>` : ''}</span>${extra}</div>`;
+  const photoBtn = (o) => o.l && o.l.has_photo ? `<button class="btn ghost sm" data-ph="${o.m.id}" style="box-shadow:none;padding:0 10px">📷 Ver</button>` : '';
+  const mine = !me || !me.plays ? '' : t.kind === 'casa'
+    ? (tDone(l) ? `<div class="card row between"><span><b>✅ Lo hiciste</b>${l.minutes ? ` · ${l.minutes} min` : ''}</span><span class="row" style="gap:6px">${l.has_photo ? `<button class="btn ghost sm" data-ph="${meId()}" style="box-shadow:none">📷</button>` : ''}<button class="link" id="t-redo">Cambiar</button></span></div>`
+      : `${l && l.status === 'rechazado' ? `<div class="banner coral" style="margin-bottom:10px">↩️ <span>El DT te pidió rehacerlo${l.reason ? `: ${esc(l.reason)}` : '.'}</span></div>` : ''}
+         ${l && l.status === 'no_puedo' ? `<div class="banner gold" style="margin-bottom:10px">🙅 <span>Avisaste que no podés${l.reason ? `: ${esc(l.reason)}` : ''}.</span></div>` : ''}
+         <div class="grid2"><button class="btn bib" id="t-done" style="grid-column:1/-1">${t.proof ? '📸 Lo hice · subir foto' : '✅ Lo hice'}</button>${l && l.status === 'no_puedo' ? '' : '<button class="btn ghost sm" id="t-cant" style="grid-column:1/-1;width:100%">No puedo hacerlo</button>'}</div>`)
+    : past ? (l ? `<div class="card"><b>${TSTATUS[l.status][0]} ${TSTATUS[l.status][1]}</b></div>` : '')
+      : `<div class="rsvp" style="grid-template-columns:1fr 1fr"><button class="voy ${l && l.status === 'voy' ? 'on' : ''}" id="t-voy"><span>👍</span>Voy</button><button class="no_voy ${l && l.status === 'no_puedo' ? 'on' : ''}" id="t-cant"><span>🙅</span>No puedo</button></div>`;
+  $('#main').innerHTML = `
+    <button class="back" id="back">← Entrenos</button>
+    <div class="card" style="border-color:${t.mandatory ? 'var(--coral)' : 'var(--line)'}">
+      <div class="row between"><span class="mini">${t.kind === 'casa' ? '🏠 En casa' : '🏟️ En cancha'}</span>${t.mandatory ? '<span class="pill coral">Obligatorio</span>' : ''}</div>
+      <h2 style="margin-top:6px">${esc(t.title)}</h2>
+      <p class="small muted" style="margin-top:4px">${t.kind === 'casa' ? (w ? `Hasta el ${fmtWhen(w)}` : 'Sin fecha límite') : fmtWhen(w)}${t.venue ? ' · ' + esc(t.venue) : ''}${t.kind === 'casa' && t.proof ? ' · Con foto de prueba' : ''}</p>
+      ${t.details ? `<p style="margin-top:10px;white-space:pre-line">${esc(t.details)}</p>` : ''}
+    </div>
+    ${adm ? `<div class="grid2" style="margin-top:12px"><button class="btn ghost sm" style="width:100%" id="t-edit">✏️ Editar</button>${t.kind === 'cancha' ? `<button class="btn sm" style="width:100%" id="t-att">✅ Tomar asistencia</button>` : `<a class="btn sm" style="width:100%;text-decoration:none" href="${wa(`${S.T.team.emoji} ${t.title}${t.mandatory ? ' (obligatorio)' : ''}\n${w ? 'Hasta el ' + fmtWhen(w) : ''}\nFaltan: ${pending.map(o => o.m.name).join(', ') || 'nadie 🙌'}\nSe sube la foto en La Casaca: ${BASE}`)}" target="_blank" rel="noopener">📣 Empujón</a>`}</div>` : ''}
+    ${me && me.plays ? `<div class="section"><div class="section-title"><h2>Tu parte</h2></div>${mine}</div>` : ''}
+    <div class="section"><div class="section-title"><h2>El equipo</h2><span class="small muted">${done.length}/${rows.length}</span></div>
+      <div class="stack">
+        ${done.length ? `<div><div class="mini" style="margin-bottom:6px">${t.kind === 'casa' ? '✅ Lo hicieron' : '✅ Estuvieron'} (${done.length})</div><div class="list">${done.map(o => row(o, photoBtn(o))).join('')}</div></div>` : ''}
+        ${going.length ? `<div><div class="mini" style="margin-bottom:6px">👍 Van (${going.length})</div><div class="list">${going.map(o => row(o)).join('')}</div></div>` : ''}
+        ${notOk.length ? `<div><div class="mini" style="margin-bottom:6px">🙅 No pueden o no estuvieron (${notOk.length})</div><div class="list">${notOk.map(o => row(o, `<span class="pill ${o.l.status === 'no_puedo' ? '' : 'coral'}">${TSTATUS[o.l.status][1]}</span>`)).join('')}</div></div>` : ''}
+        ${pending.length ? `<div><div class="mini" style="margin-bottom:6px">⏳ ${past ? 'No respondieron' : 'Falta que respondan'} (${pending.length})</div><div class="list">${pending.map(o => row(o)).join('')}</div></div>` : ''}
+      </div></div>
+    ${adm ? `<button class="link danger" id="t-del" style="display:block;margin:30px auto 0">Borrar entrenamiento</button>` : ''}`;
+  $('#back').onclick = () => { S.trainId = null; render(); };
+  const on = (sel, fn) => { const e = $(sel); if (e) e.onclick = fn; };
+  on('#t-done', () => proofSheet(t));
+  on('#t-redo', () => proofSheet(t));
+  on('#t-voy', () => trainLog(t.id, null, { status: 'voy' }, 'Anotado. ¡Nos vemos ahí! 💪'));
+  on('#t-cant', () => trainReasonSheet(t));
+  on('#t-edit', () => trainingEditSheet(t.id));
+  on('#t-att', () => attendanceSheet(t));
+  on('#t-del', () => confirmSheet('¿Borrar el entrenamiento?', `Se borra «${esc(t.title)}» con todas las fotos y la asistencia.`, 'Borrar', async () => {
+    try { await rpc('fc_training_delete', { ...P(), p_training: t.id }); closeSheet(); S.trainId = null; await refresh(); toast('Entrenamiento borrado'); } catch(e){ toast(e.message); }
+  }));
+  $$('[data-ph]').forEach(b => b.onclick = () => photoSheet(t, b.dataset.ph));
+}
+async function trainLog(tid, mid, p, msg){
+  try { await rpc('fc_training_log', { ...P(), p_training: tid, p_member: mid, p }); vibrate(15); await refresh(); if (msg) toast(msg); return true; }
+  catch(e){ toast(e.message, 3500); return false; }
+}
+function trainReasonSheet(t){
+  const R = ['🤕 Lesión','💼 Trabajo','✈️ Viaje','🤒 Enfermo','👨‍👩‍👧 Familia','📚 Estudio'];
+  const el = openSheet(`<h2>¿Por qué no podés?</h2><p class="muted">${t.mandatory ? 'Es obligatorio: el DT necesita saber el motivo.' : 'Así el DT sabe con quién cuenta.'}</p>
+    <div class="chips section" id="tr-r">${R.map(r => `<button class="chip" data-r="${r}">${r}</button>`).join('')}</div>
+    <input class="input section" id="tr-o" maxlength="120" placeholder="Otro motivo">
+    <button class="btn coral section" id="tr-ok">No puedo</button>`);
+  let pick = null;
+  $$('#tr-r .chip', el).forEach(b => b.onclick = () => { pick = b.dataset.r; $$('#tr-r .chip', el).forEach(x => x.classList.toggle('on', x === b)); });
+  $('#tr-ok', el).onclick = async () => {
+    const reason = $('#tr-o', el).value.trim() || pick;
+    if (t.mandatory && !reason) return toast('Elegí o escribí el motivo');
+    closeSheet(); await trainLog(t.id, null, { status: 'no_puedo', reason: reason || '' }, 'Avisado. Gracias por avisar a tiempo.');
+  };
+}
+// Achica la foto antes de subirla (las pruebas no necesitan alta resolución).
+function compressPhoto(file, max = 900, limit = 250000){
+  return new Promise((res, rej) => {
+    const img = new Image(), url = URL.createObjectURL(file);
+    img.onload = () => {
+      const k = Math.min(1, max / Math.max(img.width, img.height));
+      const c = document.createElement('canvas'); c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height); URL.revokeObjectURL(url);
+      let q = .72, out = c.toDataURL('image/jpeg', q);
+      while (out.length > limit && q > .3){ q -= .1; out = c.toDataURL('image/jpeg', q); }
+      res(out);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); rej(new Error('No se pudo leer esa foto. Probá con otra.')); };
+    img.src = url;
+  });
+}
+function proofSheet(t){
+  const l = tlog(t.id, meId());
+  let photo = null;
+  const el = openSheet(`<h2>${esc(t.title)}</h2><p class="muted">${t.proof ? 'Subí una foto como prueba: la ve todo el equipo.' : 'Contá cómo te fue (la foto es opcional).'}</p>
+    <label class="photo section" id="pf-box"><input type="file" accept="image/*" id="pf-in" hidden><span id="pf-view">${l && l.has_photo ? '<span class="pd">📷<b>Ya subiste una foto</b><span class="small muted">Tocá para cambiarla</span></span>' : '<span class="pd">📷<b>Tocá para sacar o elegir la foto</b><span class="small muted">Del entrenamiento, del reloj o de la app que uses</span></span>'}</span></label>
+    <div class="card section row between" style="padding:10px 16px"><b>Minutos</b>${stepperHTML('pf-m', l && l.minutes ? l.minutes : 30, 'minutos')}</div>
+    <input class="input section" id="pf-n" maxlength="200" value="${esc((l && l.note) || '')}" placeholder="Nota (ej: hice 5,2 km en 28 min)">
+    <button class="btn section" id="pf-ok">✅ Listo, lo hice</button>
+    <p class="tiny muted" style="margin-top:10px;text-align:center">Pronto: conectar Strava, Garmin y otras apps para que quede la prueba sola.</p>`);
+  bindSteppers(el, { 'pf-m': [0, 600, 5] });
+  $('#pf-in', el).onchange = async (e) => {
+    const f = e.target.files && e.target.files[0]; if (!f) return;
+    $('#pf-view', el).innerHTML = '<span class="pd">Preparando la foto…</span>';
+    try { photo = await compressPhoto(f); $('#pf-view', el).innerHTML = `<img src="${photo}" alt="Tu foto de prueba">`; }
+    catch(err){ photo = null; $('#pf-view', el).innerHTML = `<span class="pd">${esc(err.message)}</span>`; }
+  };
+  $('#pf-ok', el).onclick = async () => {
+    if (t.proof && !photo && !(l && l.has_photo)) return toast('Falta la foto de prueba 📸');
+    const b = $('#pf-ok', el); b.disabled = true; b.textContent = 'Subiendo…';
+    const ok = await trainLog(t.id, null, { status: 'hecho', minutes: stepVal(el, 'pf-m'), note: $('#pf-n', el).value.trim(), ...(photo ? { photo } : {}) }, '¡Bien ahí! Entrenamiento cumplido 💪');
+    if (ok) closeSheet(); else { b.disabled = false; b.textContent = '✅ Listo, lo hice'; }
+  };
+}
+async function photoSheet(t, mid){
+  const m = member(mid), l = tlog(t.id, mid), adm = isAdmin();
+  const el = openSheet(`<h2>${esc(m.name)}</h2><p class="muted">${esc(t.title)}${l && l.minutes ? ` · ${l.minutes} min` : ''}${l && l.note ? ` · ${esc(l.note)}` : ''}</p>
+    <div class="photo section" style="cursor:default"><span class="pd">Cargando la foto…</span></div>
+    ${adm && mid !== meId() ? `<div class="section stack"><input class="input" id="ph-r" maxlength="120" placeholder="Motivo para rehacerlo (ej: la foto no se ve)"><button class="btn ghost" id="ph-x">↩️ Pedir que lo rehaga</button></div>` : ''}`);
+  try {
+    const ph = await rpc('fc_proof', { ...P(), p_training: t.id, p_member: mid });
+    const box = $('.photo', el); if (box) box.innerHTML = ph ? `<img src="${ph}" alt="Prueba de ${esc(m.name)}">` : '<span class="pd">No hay foto</span>';
+  } catch(e){ const box = $('.photo', el); if (box) box.innerHTML = `<span class="pd">${esc(e.message)}</span>`; }
+  const x = $('#ph-x', el); if (x) x.onclick = async () => { closeSheet(); await trainLog(t.id, mid, { status: 'rechazado', reason: $('#ph-r', el).value.trim() }, `Le pediste a ${m.name} que lo rehaga`); };
+}
+function attendanceSheet(t){
+  const rows = players().slice().sort((a,b) => a.name.localeCompare(b.name));
+  const state = {}; rows.forEach(m => { const l = tlog(t.id, m.id); state[m.id] = l && l.status === 'presente' ? 'presente' : l && l.status === 'ausente' ? 'ausente' : l && l.status === 'voy' ? 'presente' : null; });
+  const el = openSheet(`<h2>Asistencia</h2><p class="muted">${esc(t.title)} · tocá para marcar quién estuvo. Arrancan marcados los que dijeron que iban.</p>
+    <div class="card section" style="padding:0 14px" id="at">${rows.map(m => { const l = tlog(t.id, m.id); return `<div class="dtrow"><span class="who"><span class="av" style="width:32px;height:32px;font-size:13px;background:${avColor(m.name)}">${esc(initials(m.name))}</span><span style="min-width:0"><b style="display:block">${esc(m.name)}</b><span class="mini">${l ? TSTATUS[l.status][1] + (l.reason ? ' · ' + esc(l.reason) : '') : 'Sin respuesta'}</span></span></span>
+      <div class="seg" data-m="${m.id}" style="width:150px"><button type="button" data-v="presente" class="${state[m.id] === 'presente' ? 'on' : ''}">✅</button><button type="button" data-v="ausente" class="${state[m.id] === 'ausente' ? 'on' : ''}">❌</button></div></div>`; }).join('')}</div>
+    <button class="btn section" id="at-ok">Guardar asistencia</button>`);
+  $$('#at .seg', el).forEach(sg => $$('button', sg).forEach(b => b.onclick = () => { const id = sg.dataset.m; state[id] = state[id] === b.dataset.v ? null : b.dataset.v; $$('button', sg).forEach(x => x.classList.toggle('on', x.dataset.v === state[id])); }));
+  $('#at-ok', el).onclick = async () => {
+    const b = $('#at-ok', el); b.disabled = true; b.textContent = 'Guardando…';
+    const jobs = rows.filter(m => state[m.id] && (tlog(t.id, m.id) || {}).status !== state[m.id])
+      .map(m => rpc('fc_training_log', { ...P(), p_training: t.id, p_member: m.id, p: { status: state[m.id] } }));
+    try { await Promise.all(jobs); closeSheet(); await refresh(); toast('Asistencia guardada ✅'); } catch(e){ toast(e.message); b.disabled = false; b.textContent = 'Guardar asistencia'; }
+  };
+}
+function trainingEditSheet(id){
+  const t = id ? trainings().find(x => x.id === id) : { kind: 'casa', title: '', details: '', mandatory: true, proof: true };
+  let kind = t.kind, mand = t.mandatory, proof = t.proof;
+  const el = openSheet(`<h2>${id ? 'Editar entrenamiento' : 'Nuevo entrenamiento'}</h2>
+    <form class="stack section" id="te">
+      ${id ? '' : `<div class="seg" id="te-k"><button type="button" data-k="casa" class="${kind === 'casa' ? 'on' : ''}">🏠 En casa</button><button type="button" data-k="cancha" class="${kind === 'cancha' ? 'on' : ''}">🏟️ En cancha</button></div>`}
+      <div id="te-tpl" ${kind === 'casa' && !id ? '' : 'hidden'}><div class="mini" style="margin-bottom:6px">Rutinas rápidas</div><div class="chips scroll">${TRAIN_TEMPLATES.map((x, i) => `<button type="button" class="chip" data-t="${i}">${x[0]}</button>`).join('')}</div></div>
+      <label class="field"><span>Título</span><input class="input" id="te-t" maxlength="60" value="${esc(t.title)}" placeholder="${kind === 'casa' ? 'Ej: Fuerza en casa' : 'Ej: Entrenamiento del martes'}"></label>
+      <label class="field"><span>Qué hay que hacer</span><textarea class="input" id="te-d" maxlength="1500" placeholder="Ej: 4x15 sentadillas, 3x12 estocadas…">${esc(t.details || '')}</textarea></label>
+      <label class="field"><span id="te-wl">${kind === 'casa' ? 'Hasta cuándo' : 'Día y hora'}</span><input class="input" id="te-w" type="datetime-local" value="${toLocalInput(tWhen(t))}"></label>
+      <label class="field" id="te-vb" ${kind === 'cancha' ? '' : 'hidden'}><span>Dónde</span><input class="input" id="te-v" maxlength="60" value="${esc(t.venue || '')}" placeholder="Ej: Plaza del barrio"></label>
+      <div class="field"><span>¿Es obligatorio?</span><div class="seg" id="te-m"><button type="button" data-v="1" class="${mand ? 'on' : ''}">Sí, para todos</button><button type="button" data-v="0" class="${!mand ? 'on' : ''}">Opcional</button></div><div class="hint">Si es obligatorio, el que no puede tiene que avisar el motivo.</div></div>
+      <div class="field" id="te-pb" ${kind === 'casa' ? '' : 'hidden'}><span>¿Foto de prueba?</span><div class="seg" id="te-p"><button type="button" data-v="1" class="${proof ? 'on' : ''}">📸 Sí, con foto</button><button type="button" data-v="0" class="${!proof ? 'on' : ''}">Alcanza con marcarlo</button></div></div>
+      <button class="btn" type="submit">${id ? 'Guardar' : 'Mandar al equipo'}</button>
+    </form>`);
+  const syncKind = () => { $('#te-tpl', el).hidden = kind !== 'casa' || !!id; $('#te-vb', el).hidden = kind !== 'cancha'; $('#te-pb', el).hidden = kind !== 'casa'; $('#te-wl', el).textContent = kind === 'casa' ? 'Hasta cuándo' : 'Día y hora'; };
+  $$('#te-k button', el).forEach(b => b.onclick = () => { kind = b.dataset.k; $$('#te-k button', el).forEach(x => x.classList.toggle('on', x === b)); syncKind(); });
+  $$('#te-tpl .chip', el).forEach(b => b.onclick = () => { const [ti, d] = TRAIN_TEMPLATES[+b.dataset.t]; $('#te-t', el).value = ti.replace(/^\S+\s/, ''); $('#te-d', el).value = d; $$('#te-tpl .chip', el).forEach(x => x.classList.toggle('on', x === b)); });
+  $$('#te-m button', el).forEach(b => b.onclick = () => { mand = b.dataset.v === '1'; $$('#te-m button', el).forEach(x => x.classList.toggle('on', x === b)); });
+  $$('#te-p button', el).forEach(b => b.onclick = () => { proof = b.dataset.v === '1'; $$('#te-p button', el).forEach(x => x.classList.toggle('on', x === b)); });
+  $('#te', el).onsubmit = async (e) => {
+    e.preventDefault();
+    const title = $('#te-t', el).value.trim(); if (!title) return toast('Ponele un título');
+    const wv = $('#te-w', el).value, when = wv ? new Date(wv).toISOString() : '';
+    if (kind === 'cancha' && !when) return toast('Poné día y hora');
+    const p = { kind, title, details: $('#te-d', el).value.trim(), mandatory: mand, proof: kind === 'casa' ? proof : false,
+      starts_at: kind === 'cancha' ? when : '', due_at: kind === 'casa' ? when : '', venue: kind === 'cancha' ? $('#te-v', el).value.trim() : '' };
+    try { const nid = await rpc('fc_training_save', { ...P(), p_team: S.teamId, p_id: id, p }); closeSheet(); await loadTeam(); openTraining(nid); toast(id ? 'Guardado' : 'Listo: el equipo ya lo ve en Entrenos 💪'); }
+    catch(err){ toast(err.message); }
+  };
+}
+
 /* ============ Plantel ============ */
 function cardHTML(m, big = false){
   const ov = m.overall, pos = (m.positions || [])[0] || '—', tr = tier(ov);
@@ -1279,6 +1536,8 @@ function playerSheet(id){
     ${m.status_note ? `<p class="small muted" style="text-align:center;margin-top:6px">${esc(m.status_note)}</p>` : ''}
     ${dt && sug != null ? `<div class="banner sky section">📈 <span>Según sus partidos, la app sugiere <b>${sug}</b>${m.overall != null ? ` (${sug - m.overall >= 0 ? '+' : ''}${sug - m.overall})` : ''}.</span>${m.overall !== sug ? `<button class="btn sm sky" id="ps-acc" style="margin-left:auto;box-shadow:none">Usar</button>` : ''}</div>` : ''}
     <div class="kpis section"><div><b>${a.pj}</b><span>Partidos</span></div><div><b>${a.avg != null ? fmt1(a.avg) : '–'}</b><span>Puntaje</span></div><div><b>${a.goals}</b><span>Goles</span></div><div><b>${a.assists}</b><span>Asist.</span></div></div>
+    ${officialOf(m) ? `<p class="small muted" style="margin-top:8px;text-align:center">🏆 En el torneo: ${plural(officialOf(m).pj,'partido','partidos')} · ⚽ ${officialOf(m).goles}${officialOf(m).amarillas ? ` · 🟨 ${officialOf(m).amarillas}` : ''}${officialOf(m).rojas ? ` · 🟥 ${officialOf(m).rojas}` : ''}${officialOf(m).figura ? ` · ⭐ ${officialOf(m).figura}` : ''}</p>` : ''}
+    ${a.tcount ? `<p class="small muted" style="margin-top:8px;text-align:center">🏋️ Entrenamientos: ${a.tdone} de ${a.tcount} (${a.ent}%)</p>` : ''}
     ${a.figs || a.yellow || a.red ? `<p class="small muted" style="margin-top:8px;text-align:center">${a.figs ? `⭐ ${plural(a.figs,'vez figura','veces figura')}  ` : ''}${a.yellow ? `🟨 ${a.yellow}  ` : ''}${a.red ? `🟥 ${a.red}` : ''}</p>` : ''}
     ${hist.length ? `<div class="section"><div class="mini" style="margin-bottom:8px">Partido a partido</div><div class="list">${hist.map(({ x, s }) => `<div class="lrow" style="padding:8px 12px"><span class="t"><b>vs ${esc(x.opponent)}</b><small>${s.goals ? `⚽${s.goals} ` : ''}${s.assists ? `🅰️${s.assists} ` : ''}${s.yellow ? '🟨'.repeat(s.yellow) : ''}${s.red ? '🟥' : ''}${s.self_rating != null && (dt || self) ? ` · se puso ${fmt1(+s.self_rating)}` : ''}</small></span>${s.dt_rating != null ? `<span class="rate ${rateCls(+s.dt_rating)}">${fmt1(+s.dt_rating)}</span>` : ''}</div>`).join('')}</div></div>` : ''}
     <div class="section stack">
@@ -1357,25 +1616,25 @@ function statusSheet(m){
 function renderTabla(){
   const v = S.tablaView;
   $('#main').innerHTML = `<h1 style="margin-bottom:12px">Tabla</h1>
-    <div class="seg" id="tv" style="margin-bottom:16px">${[['ranking','Ranking'],['planilla','Planilla'],['equipo','Equipo']].map(([k,l]) => `<button data-k="${k}" class="${v === k ? 'on' : ''}">${l}</button>`).join('')}</div>
+    <div class="seg" id="tv" style="margin-bottom:16px">${[['ranking','Ranking'],['planilla','Planilla'],['torneo','Torneo'],['equipo','Equipo']].map(([k,l]) => `<button data-k="${k}" class="${v === k ? 'on' : ''}">${l}</button>`).join('')}</div>
     <div id="tb"></div>`;
   $$('#tv button').forEach(b => b.onclick = () => { S.tablaView = b.dataset.k; LS.set('casaca_tabla', S.tablaView); renderTabla(); });
-  ({ ranking: tablaRanking, planilla: tablaPlanilla, equipo: tablaEquipo })[v]($('#tb'));
+  ({ ranking: tablaRanking, planilla: tablaPlanilla, torneo: tablaTorneo, equipo: tablaEquipo })[v]($('#tb'));
 }
 function tablaRanking(box){
   const showR = S.T.team.ratings_public || isDT();
-  const rows = players().map(m => ({ m, a: agg(m.id) })).filter(o => o.a.pj);
-  const SORTS = [...(showR ? [['avg','Puntaje']] : []), ['pj','Partidos'], ['goals','Goles'], ['assists','Asistencias'], ['figs','Figura']];
+  const rows = players().map(m => ({ m, a: agg(m.id) })).filter(o => o.a.pj || o.a.tcount);
+  const SORTS = [...(showR ? [['avg','Puntaje']] : []), ['pj','Partidos'], ['goals','Goles'], ['assists','Asistencias'], ['figs','Figura'], ['ent','Entrenos']];
   if (!SORTS.some(s => s[0] === S.sortBy)) S.sortBy = SORTS[0][0];
   const k = S.sortBy;
   const minPj = Math.max(1, Math.ceil(playedMatches().length / 3));
-  const list = rows.filter(o => k !== 'avg' || (o.a.avg != null && o.a.pj >= minPj))
+  const list = rows.filter(o => k === 'ent' ? o.a.tcount > 0 : k === 'avg' ? (o.a.avg != null && o.a.pj >= minPj) : o.a.pj > 0)
     .sort((a,b) => (b.a[k] ?? -1) - (a.a[k] ?? -1) || b.a.pj - a.a.pj || a.m.name.localeCompare(b.m.name));
-  const val = (a) => k === 'avg' ? fmt1(a.avg) : a[k];
+  const val = (a) => k === 'avg' ? fmt1(a.avg) : k === 'ent' ? `${a.ent}%` : a[k];
   const medal = (i) => ['🥇','🥈','🥉'][i] || `<span class="num" style="font-size:20px;color:var(--muted)">${i+1}</span>`;
   box.innerHTML = `<div class="chips scroll" style="margin-bottom:12px">${SORTS.map(([s,l]) => `<button class="chip ${s === k ? 'on' : ''}" data-s="${s}">${l}</button>`).join('')}</div>
     ${k === 'avg' ? `<p class="tiny muted" style="margin:-4px 0 10px">Promedio de los puntajes del DT. Entran los que jugaron ${plural(minPj,'partido','partidos')} o más.</p>` : ''}
-    ${list.length ? `<div class="list">${list.map((o, i) => `<button class="lrow" data-p="${o.m.id}" style="${o.m.id === meId() ? 'border-color:var(--grass)' : ''}"><span style="width:30px;text-align:center;font-size:22px">${medal(i)}</span><span class="av" style="width:34px;height:34px;font-size:13px;background:${avColor(o.m.name)}">${esc(initials(o.m.name))}</span><span class="t"><b>${esc(o.m.name)}</b><small>${o.a.pj} PJ · ${o.a.goals} G · ${o.a.assists} A</small></span><span class="rate ${k === 'avg' ? rateCls(o.a.avg) : 'r-na'}" style="${k !== 'avg' ? 'color:var(--ink)' : ''}">${val(o.a)}</span></button>`).join('')}</div>`
+    ${list.length ? `<div class="list">${list.map((o, i) => `<button class="lrow" data-p="${o.m.id}" style="${o.m.id === meId() ? 'border-color:var(--grass)' : ''}"><span style="width:30px;text-align:center;font-size:22px">${medal(i)}</span><span class="av" style="width:34px;height:34px;font-size:13px;background:${avColor(o.m.name)}">${esc(initials(o.m.name))}</span><span class="t"><b>${esc(o.m.name)}</b><small>${k === 'ent' ? `${o.a.tdone} de ${o.a.tcount} entrenamientos` : `${o.a.pj} PJ · ${o.a.goals} G · ${o.a.assists} A`}</small></span><span class="rate ${k === 'avg' ? rateCls(o.a.avg) : 'r-na'}" style="${k !== 'avg' ? 'color:var(--ink)' : ''}">${val(o.a)}</span></button>`).join('')}</div>`
       : `<div class="card empty muted">Todavía no hay datos para este ranking.</div>`}
     ${!showR ? `<p class="small muted" style="margin-top:12px">🔒 Los puntajes del DT son privados en este equipo: cada uno ve el suyo en Inicio.</p>` : ''}`;
   $$('[data-s]', box).forEach(b => b.onclick = () => { S.sortBy = b.dataset.s; tablaRanking(box); });
@@ -1436,6 +1695,106 @@ function tablaEquipo(box){
     </div>`;
 }
 
+/* ============ Torneo oficial ============ */
+// Posiciones, fixture y planilla del torneo (Todo Torneos), sincronizados por el servidor los sábados a la noche.
+const LG = () => S.LG;
+const isUs = (id) => LG() && id === LG().team_ext_id;
+function lgFechaDefault(){
+  const ms = LG().matches, ours = ms.filter(m => isUs(m.home_id) || isUs(m.away_id));
+  const next = ours.find(m => m.status !== 'FINA' && m.day && new Date(m.day + 'T23:59') >= new Date(Date.now() - 864e5));
+  const last = ours.filter(m => m.status === 'FINA').slice(-1)[0];
+  return (next || last || ms[0] || {}).fecha;
+}
+function tablaTorneo(box){
+  const L = LG();
+  if (!L){
+    box.innerHTML = `<div class="card empty"><div class="big">🏆</div><h3>Conectá el torneo</h3><p class="muted small">${isDT() ? 'Pegá el link de la página de posiciones del torneo (por ejemplo, la de Alto Nono) y la app trae sola la tabla, el fixture y los resultados de cada fecha.' : 'Cuando el DT conecte el torneo, acá vas a ver la tabla, el fixture y los resultados.'}</p>${isDT() ? '<button class="btn sm" id="lg-set" style="margin-top:12px">Conectar torneo</button>' : ''}</div>`;
+    const b = $('#lg-set', box); if (b) b.onclick = leagueSetSheet;
+    return;
+  }
+  const fechas = [...new Set(L.matches.map(m => m.fecha))];
+  S.lgFecha = fechas.includes(S.lgFecha) ? S.lgFecha : lgFechaDefault();
+  const fm = L.matches.filter(m => m.fecha === S.lgFecha);
+  const me = L.standings.find(s => isUs(s.id));
+  const pl = L.players.filter(p => p.pj > 0);
+  const linked = (pid) => activeMembers().find(m => m.ext_player_id === pid);
+  box.innerHTML = `
+    <div class="row between" style="margin-bottom:10px"><div><h2>${esc(L.torneo_name || 'Torneo')}</h2><p class="tiny muted">${L.last_sync ? `Actualizado ${fmtWhen(L.last_sync)}` : 'Todavía sin datos'} · ${esc(L.site)}</p></div>
+      ${isAdmin() ? '<button class="btn ghost sm" id="lg-ref">↻ Actualizar</button>' : ''}</div>
+    ${me ? `<div class="kpis" style="margin-bottom:14px"><div><b>${me.pos}º</b><span>Posición</span></div><div><b>${me.pts}</b><span>Puntos</span></div><div><b style="font-size:21px;line-height:1.3">${me.pg}-${me.pe}-${me.pp}</b><span>G-E-P</span></div><div><b>${me.dg > 0 ? '+' : ''}${me.dg}</b><span>Dif. gol</span></div></div>` : ''}
+    <div class="section-title"><h2>Posiciones</h2></div>
+    <div class="sheetwrap"><table class="pl tight"><thead><tr><th class="l">Equipo</th><th>PJ</th><th>G</th><th>E</th><th>P</th><th>GF</th><th>GC</th><th>DG</th><th>Pts</th></tr></thead><tbody>
+      ${L.standings.map(s => `<tr${isUs(s.id) ? ' style="background:var(--grass-soft)"' : ''}><td class="l${isUs(s.id) ? ' me' : ''}"${isUs(s.id) ? ' style="background:var(--grass-soft)"' : ''}><span class="mini" style="display:inline-block;width:20px">${s.pos}</span>${esc(s.name)}</td><td>${s.pj}</td><td>${s.pg}</td><td>${s.pe}</td><td>${s.pp}</td><td>${s.gf}</td><td>${s.gc}</td><td>${s.dg > 0 ? '+' : ''}${s.dg}</td><td><b>${s.pts}</b></td></tr>`).join('')}
+    </tbody></table></div>
+    <div class="section"><div class="section-title"><h2>Fecha a fecha</h2></div>
+      <div class="chips scroll" style="margin-bottom:10px">${fechas.map(f => `<button class="chip ${f === S.lgFecha ? 'on' : ''}" data-fe="${esc(f)}">${esc((f || '').replace(/^FECHA\s*/i, 'F'))}</button>`).join('')}</div>
+      <div class="card" style="padding:4px 14px">${fm.map(m => { const fin = m.status === 'FINA', ours = isUs(m.home_id) || isUs(m.away_id);
+        return `<div class="statrow" style="${ours ? 'font-weight:800' : ''}"><span class="grow" style="text-align:right">${esc(m.home)}</span>
+          <span class="num" style="min-width:64px;text-align:center;font-size:22px;font-weight:900">${fin ? `${m.gh} - ${m.ga}` : '<span class="mini">vs</span>'}</span>
+          <span class="grow">${esc(m.away)}</span></div>
+          ${!fin ? `<div class="tiny muted" style="text-align:center;margin:-6px 0 6px">${m.day ? `${fmtWhen(m.day + 'T12:00', false)}${m.hora ? ' · ' + esc(m.hora) + ' h' : ''}${m.cancha ? ' · Cancha ' + esc(m.cancha) : ''}` : 'Sin programar'}</div>` : ''}`; }).join('') || '<p class="muted small" style="padding:10px 0">Sin partidos cargados.</p>'}</div>
+    </div>
+    ${pl.length ? `<div class="section"><div class="section-title"><h2>Planilla oficial</h2>${isAdmin() ? '<button class="link" id="lg-link">Vincular jugadores</button>' : ''}</div>
+      <div class="sheetwrap"><table class="pl"><thead><tr><th class="l">Jugador</th><th>PJ</th><th>⚽</th><th>🟨</th><th>🟥</th><th>⭐</th></tr></thead><tbody>
+        ${pl.map(p => { const m = linked(p.id); return `<tr><td class="l${m && m.id === meId() ? ' me' : ''}">${esc(p.name)}${m ? `<br><span class="mini">${esc(m.name)}</span>` : ''}</td><td>${p.pj}</td><td>${p.goles || '·'}</td><td>${p.amarillas || '·'}</td><td>${p.rojas || '·'}</td><td>${p.figura || '·'}</td></tr>`; }).join('')}
+      </tbody></table></div>
+      <p class="tiny muted" style="margin-top:6px">Datos de la planilla oficial del torneo. Se actualizan solos los sábados a la noche.</p></div>` : ''}
+    ${isDT() ? '<button class="link muted" id="lg-set" style="display:block;margin:20px auto 0">Cambiar el torneo conectado</button>' : ''}`;
+  $$('[data-fe]', box).forEach(b => b.onclick = () => { S.lgFecha = b.dataset.fe; tablaTorneo(box); });
+  const r = $('#lg-ref', box); if (r) r.onclick = async () => {
+    try { await rpc('fc_league_refresh', { ...P(), p_team: S.teamId }); toast('Pedido enviado. En un par de minutos se actualiza.', 3500); r.disabled = true; setTimeout(refresh, 150000); } catch(e){ toast(e.message, 3500); }
+  };
+  const s = $('#lg-set', box); if (s) s.onclick = leagueSetSheet;
+  const k = $('#lg-link', box); if (k) k.onclick = linkPlayersSheet;
+}
+function leagueSetSheet(){
+  const L = LG();
+  const el = openSheet(`<h2>Torneo oficial</h2><p class="muted">Funciona con los torneos hechos con Todo Torneos (como Alto Nono). La app trae sola la tabla, el fixture, los resultados y la planilla.</p>
+    <form class="stack section" id="lgs">
+      <label class="field"><span>Link de la página de posiciones</span><input class="input" id="lgs-u" inputmode="url" value="${L ? `https://www.${esc(L.site)}/pos-index.html?idTorneo=${L.torneo_id}` : ''}" placeholder="https://www.altonono.com.ar/pos-index.html?idTorneo=175"></label>
+      <label class="field"><span>Nombre del equipo en el torneo</span><input class="input" id="lgs-n" maxlength="40" value="${esc(L ? L.team_ext_name : S.T.team.name)}" placeholder="Como figura en la tabla"></label>
+      <button class="btn" type="submit">Conectar</button>
+    </form>`);
+  $('#lgs', el).onsubmit = async (e) => {
+    e.preventDefault();
+    try { await rpc('fc_league_set', { ...P(), p_team: S.teamId, p_url: $('#lgs-u', el).value.trim(), p_team_name: $('#lgs-n', el).value.trim() }); closeSheet(); toast('Conectado. En un par de minutos aparecen los datos.', 4000); setTimeout(refresh, 150000); }
+    catch(err){ toast(err.message, 3500); }
+  };
+}
+// Sugiere qué jugador de la planilla oficial es cada uno (por apodo, nombre o iniciales). El DT confirma.
+function guessPlayer(m, players){
+  const n = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  const nick = n(m.name).replace(/[()]/g, ' ').split(/\s+/).filter(Boolean);
+  let best = null, bestScore = 0;
+  players.forEach(p => {
+    const parts = n(p.name).split(/\s+/).filter(Boolean), ini = parts.map(x => x[0]).join('');
+    let sc = 0;
+    nick.forEach(k => {
+      if (k.length >= 2 && ini === k) sc += 3;
+      parts.forEach(w => { if (k.length >= 3 && (w.startsWith(k.slice(0, 4)) || k.startsWith(w.slice(0, 4)))) sc += w === parts[0] ? 1 : 2; });
+    });
+    if (sc > bestScore){ bestScore = sc; best = p; }
+  });
+  return bestScore >= 2 ? best : null;
+}
+function linkPlayersSheet(){
+  const L = LG(), pls = L.players.slice().sort((a,b) => a.name.localeCompare(b.name));
+  const rows = players().slice().sort((a,b) => a.name.localeCompare(b.name));
+  const el = openSheet(`<h2>Vincular jugadores</h2><p class="muted">Elegí quién es quién en la planilla oficial: así los goles y las tarjetas del torneo aparecen en cada carta. Las sugerencias ✨ son automáticas, revisalas.</p>
+    <div class="card section" style="padding:0 14px">${rows.map(m => { const g = m.ext_player_id ? null : guessPlayer(m, pls); const sel = m.ext_player_id || (g && g.id);
+      return `<div class="dtrow"><span class="who"><b>${esc(m.name)}</b>${g ? ' <span title="Sugerido">✨</span>' : ''}</span>
+        <select class="input" data-m="${m.id}" style="min-height:42px;font-size:15px;max-width:190px"><option value="">—</option>${pls.map(p => `<option value="${p.id}" ${p.id === sel ? 'selected' : ''}>${esc(p.name)}</option>`).join('')}</select></div>`; }).join('')}</div>
+    <button class="btn section" id="lk-ok">Guardar</button>`);
+  $('#lk-ok', el).onclick = async () => {
+    const b = $('#lk-ok', el); b.disabled = true; b.textContent = 'Guardando…';
+    const jobs = $$('select[data-m]', el).map(s => ({ m: member(s.dataset.m), v: s.value ? +s.value : null }))
+      .filter(o => (o.m.ext_player_id || null) !== o.v)
+      .map(o => rpc('fc_member_save', { ...P(), p_team: S.teamId, p_id: o.m.id, p: { ext_player_id: o.v ?? '' } }));
+    try { await Promise.all(jobs); closeSheet(); await refresh(); toast('Listo, jugadores vinculados'); } catch(e){ toast(e.message); b.disabled = false; b.textContent = 'Guardar'; }
+  };
+}
+const officialOf = (m) => LG() && m.ext_player_id ? LG().players.find(p => p.id === m.ext_player_id) : null;
+
 /* ============ Perfil y ajustes ============ */
 function profileSheet(){
   const dt = isDT(), t = S.T.team, m = member(meId());
@@ -1488,7 +1847,9 @@ function settingsSheet(){
       <button class="btn" type="submit">Guardar</button>
     </form>
     <div class="card section"><b>Códigos de invitación</b><p class="small muted" style="margin:4px 0 10px">Si un código se compartió de más, generá uno nuevo. El viejo deja de funcionar.</p>
-      <div class="grid2"><button class="btn ghost sm" style="width:100%" id="st-nc">Nuevo de jugadores</button><button class="btn ghost sm" style="width:100%" id="st-nd">Nuevo de DT</button></div></div>`);
+      <div class="grid2"><button class="btn ghost sm" style="width:100%" id="st-nc">Nuevo de jugadores</button><button class="btn ghost sm" style="width:100%" id="st-nd">Nuevo de DT</button></div></div>
+    <button class="btn ghost section" id="st-lg">🏆 ${S.LG ? 'Torneo conectado: ' + esc(S.LG.torneo_name || S.LG.site) : 'Conectar el torneo oficial'}</button>`);
+  $('#st-lg', el).onclick = () => { closeSheet(); setTimeout(leagueSetSheet, 80); };
   $$('#st-f button', el).forEach(b => b.onclick = () => { size = +b.dataset.n; $$('#st-f button', el).forEach(x => x.classList.toggle('on', x === b)); });
   $$('#st-p button', el).forEach(b => b.onclick = () => { pub = b.dataset.v === '1'; $$('#st-p button', el).forEach(x => x.classList.toggle('on', x === b)); });
   const save = async (p, msg) => { try { await rpc('fc_team_settings', { ...P(), p_team: S.teamId, p }); closeSheet(); await loadMe(); await refresh(); toast(msg); } catch(e){ toast(e.message); } };

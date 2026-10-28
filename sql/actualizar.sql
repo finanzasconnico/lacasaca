@@ -206,3 +206,13 @@ begin
   perform _fc_board(_uid(p_token), t);
   delete from fc_lineups where id = p_id;
 end $$;
+
+-- Entrenamientos: borrar uno (DT y ayudantes). El resto del módulo ya está en la base.
+create or replace function fc_training_delete(p_token uuid, p_training uuid) returns void
+language plpgsql security definer set search_path = public as $$
+declare t uuid;
+begin
+  select team_id into t from fc_trainings where id = p_training;
+  perform _fc_admin(_uid(p_token), t);
+  delete from fc_trainings where id = p_training;
+end $$;
