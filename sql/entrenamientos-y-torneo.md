@@ -5,6 +5,7 @@ Estas partes ya están cargadas en la base (proyecto racha-app). Quedan anotadas
 ## Entrenamientos
 - `fc_trainings`: entrenamientos en cancha (con día, hora y lugar) o en casa (con fecha límite y foto de prueba).
 - `fc_training_logs`: la respuesta de cada jugador (va, no puede, presente, ausente, hecho, a rehacer), con la foto comprimida.
+- Las fotos duran 24 h: `casaca-limpiar-fotos` corre cada 15 minutos y las borra; queda anotado que el entrenamiento se hizo.
 - Funciones: `fc_trainings_list`, `fc_training_save`, `fc_training_log`, `fc_proof` y `fc_training_delete` (esta última está en `actualizar.sql`).
 
 ## Torneo oficial (Todo Torneos, por ejemplo Alto Nono)

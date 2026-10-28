@@ -1342,7 +1342,7 @@ function renderTraining(id){
     <div class="card" style="border-color:${t.mandatory ? 'var(--coral)' : 'var(--line)'}">
       <div class="row between"><span class="mini">${t.kind === 'casa' ? '🏠 En casa' : '🏟️ En cancha'}</span>${t.mandatory ? '<span class="pill coral">Obligatorio</span>' : ''}</div>
       <h2 style="margin-top:6px">${esc(t.title)}</h2>
-      <p class="small muted" style="margin-top:4px">${t.kind === 'casa' ? (w ? `Hasta el ${fmtWhen(w)}` : 'Sin fecha límite') : fmtWhen(w)}${t.venue ? ' · ' + esc(t.venue) : ''}${t.kind === 'casa' && t.proof ? ' · Con foto de prueba' : ''}</p>
+      <p class="small muted" style="margin-top:4px">${t.kind === 'casa' ? (w ? `Hasta el ${fmtWhen(w)}` : 'Sin fecha límite') : fmtWhen(w)}${t.venue ? ' · ' + esc(t.venue) : ''}${t.kind === 'casa' && t.proof ? ' · Con foto de prueba (dura 24 h)' : ''}</p>
       ${t.details ? `<p style="margin-top:10px;white-space:pre-line">${esc(t.details)}</p>` : ''}
     </div>
     ${adm ? `<div class="grid2" style="margin-top:12px"><button class="btn ghost sm" style="width:100%" id="t-edit">✏️ Editar</button>${t.kind === 'cancha' ? `<button class="btn sm" style="width:100%" id="t-att">✅ Tomar asistencia</button>` : `<a class="btn sm" style="width:100%;text-decoration:none" href="${wa(`${S.T.team.emoji} ${t.title}${t.mandatory ? ' (obligatorio)' : ''}\n${w ? 'Hasta el ' + fmtWhen(w) : ''}\nFaltan: ${pending.map(o => o.m.name).join(', ') || 'nadie 🙌'}\nSe sube la foto en La Casaca: ${BASE}`)}" target="_blank" rel="noopener">📣 Empujón</a>`}</div>` : ''}
@@ -1405,7 +1405,7 @@ function compressPhoto(file, max = 900, limit = 250000){
 function proofSheet(t){
   const l = tlog(t.id, meId());
   let photo = null;
-  const el = openSheet(`<h2>${esc(t.title)}</h2><p class="muted">${t.proof ? 'Subí una foto como prueba: la ve todo el equipo.' : 'Contá cómo te fue (la foto es opcional).'}</p>
+  const el = openSheet(`<h2>${esc(t.title)}</h2><p class="muted">${t.proof ? 'Subí una foto como prueba: la ve todo el equipo durante 24 h y después se borra.' : 'Contá cómo te fue (la foto es opcional y dura 24 h).'}</p>
     <label class="photo section" id="pf-box"><input type="file" accept="image/*" id="pf-in" hidden><span id="pf-view">${l && l.has_photo ? '<span class="pd">📷<b>Ya subiste una foto</b><span class="small muted">Tocá para cambiarla</span></span>' : '<span class="pd">📷<b>Tocá para sacar o elegir la foto</b><span class="small muted">Del entrenamiento, del reloj o de la app que uses</span></span>'}</span></label>
     <div class="card section row between" style="padding:10px 16px"><b>Minutos</b>${stepperHTML('pf-m', l && l.minutes ? l.minutes : 30, 'minutos')}</div>
     <input class="input section" id="pf-n" maxlength="200" value="${esc((l && l.note) || '')}" placeholder="Nota (ej: hice 5,2 km en 28 min)">
@@ -1432,7 +1432,7 @@ async function photoSheet(t, mid){
     ${adm && mid !== meId() ? `<div class="section stack"><input class="input" id="ph-r" maxlength="120" placeholder="Motivo para rehacerlo (ej: la foto no se ve)"><button class="btn ghost" id="ph-x">↩️ Pedir que lo rehaga</button></div>` : ''}`);
   try {
     const ph = await rpc('fc_proof', { ...P(), p_training: t.id, p_member: mid });
-    const box = $('.photo', el); if (box) box.innerHTML = ph ? `<img src="${ph}" alt="Prueba de ${esc(m.name)}">` : '<span class="pd">No hay foto</span>';
+    const box = $('.photo', el); if (box) box.innerHTML = ph ? `<img src="${ph}" alt="Prueba de ${esc(m.name)}">` : '<span class="pd">🕐<b>La foto ya se borró</b><span class="small muted">Las fotos duran 24 h. Queda anotado que lo hizo.</span></span>';
   } catch(e){ const box = $('.photo', el); if (box) box.innerHTML = `<span class="pd">${esc(e.message)}</span>`; }
   const x = $('#ph-x', el); if (x) x.onclick = async () => { closeSheet(); await trainLog(t.id, mid, { status: 'rechazado', reason: $('#ph-r', el).value.trim() }, `Le pediste a ${m.name} que lo rehaga`); };
 }
