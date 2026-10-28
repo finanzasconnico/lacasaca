@@ -239,7 +239,7 @@ table.pl.tight th.l,table.pl.tight td.l{max-width:130px}
 table.pl td.me{font-weight:800}
 
 /* Pizarra */
-.pitch{position:relative;width:100%;aspect-ratio:68/100;border-radius:18px;overflow:hidden;background:repeating-linear-gradient(180deg,var(--pitch1) 0 10%,var(--pitch2) 10% 20%);touch-action:none;user-select:none;-webkit-user-select:none}
+.pitch{position:relative;width:100%;aspect-ratio:68/100;border-radius:18px;overflow:hidden;background:repeating-linear-gradient(180deg,var(--pitch1) 0 10%,var(--pitch2) 10% 20%);touch-action:pan-y pinch-zoom;user-select:none;-webkit-user-select:none}
 .pitch svg.lines{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
 .tok{position:absolute;transform:translate(-50%,-50%);display:flex;flex-direction:column;align-items:center;gap:3px;width:76px;touch-action:none;z-index:2}
 .tok .dot{width:44px;height:44px;border-radius:50%;background:var(--bib);color:#2A3300;display:grid;place-items:center;font-family:var(--f-num);font-weight:900;font-size:20px;box-shadow:0 3px 0 rgba(0,0,0,.25);border:3px solid #fff}
@@ -248,6 +248,7 @@ table.pl td.me{font-weight:800}
 .tok.hurt .dot{background:var(--coral);color:#fff}
 .tok .nm{font-size:12px;font-weight:800;color:#fff;background:rgba(0,0,0,.45);padding:1px 6px;border-radius:6px;max-width:76px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tok.drag{z-index:5}
+.pitch.ro .tok{touch-action:pan-y pinch-zoom}
 .tok.drag .dot{transform:scale(1.12)}
 .tok.note .dot::after{content:"";position:absolute;width:12px;height:12px;border-radius:50%;background:var(--sky);border:2px solid #fff;transform:translate(16px,-16px)}
 .bench{display:flex;flex-wrap:wrap;gap:6px}
@@ -1282,7 +1283,7 @@ function renderPizarra(){
     ${!dt ? `<p class="muted small" style="margin:-4px 0 10px">${esc(PZ.name)} · ${PZ.formation}</p>` : ''}
     ${myNote ? `<div class="banner sky" style="margin-bottom:10px">📌 <span><b>Indicación para vos:</b> ${esc(myNote)}</span></div>` : ''}
     ${dt ? `<div class="chips scroll" style="margin-bottom:12px">${forms.map(f => `<button class="chip ${f === PZ.formation ? 'on' : ''}" data-f="${f}">${f}</button>`).join('')}</div>` : ''}
-    <div class="pitch" id="pitch">${PITCH_LINES}${PZ.slots.map((s, i) => {
+    <div class="pitch${dt ? '' : ' ro'}" id="pitch">${PITCH_LINES}${PZ.slots.map((s, i) => {
       const m = s.m && member(s.m);
       const cls = ['tok', s.gk ? 'gk' : '', !m ? 'empty' : '', m && m.status !== 'ok' ? 'hurt' : '', m && PZ.notes[m.id] ? 'note' : ''].join(' ');
       return `<div class="${cls}" data-i="${i}" style="left:${s.x}%;top:${s.y}%"><div class="dot">${m ? (m.number ?? esc(initials(m.name))) : '+'}</div>${m ? `<div class="nm">${esc(m.name)}</div>` : ''}</div>`;
