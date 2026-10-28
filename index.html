@@ -387,6 +387,8 @@ const ICONS = {
   tabla: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 21V11M10 21V4M16 21v-7M22 21H2"/></svg>'
 };
 const TABS = [['inicio','Inicio'],['partidos','Partidos'],['entrenos','Entrenos'],['plantel','Plantel'],['tabla','Tabla']];
+// En un equipo de amistosos las mismas pestañas cambian de nombre: la fecha de hoy, el historial y la tabla del picadito.
+const TABS_PK = [['inicio','Hoy'],['partidos','Fechas'],['entrenos','Entrenos'],['plantel','Jugadores'],['tabla','Tabla']];
 const LOGO = `<svg viewBox="0 0 100 100" aria-hidden="true"><rect width="100" height="100" rx="24" fill="#0E7A3B"/><path d="M31 18l11-4c2 6 14 6 16 0l11 4 16 14-8 12-8-5v46H31V39l-8 5-8-12z" fill="#D8F23A" stroke="#B5CF1E" stroke-width="1.5" stroke-linejoin="round"/><path d="M42 14c2 6 14 6 16 0" fill="none" stroke="#0E7A3B" stroke-width="3" stroke-linecap="round"/><text x="50" y="72" text-anchor="middle" font-family="Big Shoulders Display,Bricolage Grotesque,sans-serif" font-weight="900" font-size="34" fill="#0E7A3B">10</text></svg>`;
 
 /* ============ Fútbol: posiciones, formaciones y atributos ============ */
@@ -502,13 +504,15 @@ async function loadTeam(){
     const [T, TR, RT] = await Promise.all([rpc('fc_team', { ...P(), p_team: S.teamId }), rpc('fc_trainings_list', { ...P(), p_team: S.teamId }).catch(() => null), rpc('fc_routines_list', { ...P(), p_team: S.teamId }).catch(() => [])]);
     S.RT = RT || [];
     S.T = T; S.TR = TR || { trainings: [], logs: [] };
+    S.PK = T.team.kind === 'amistosos' ? await rpc('fc_pickups', { ...P(), p_team: S.teamId }).catch(() => S.PK || []) : null;
+    LS.set('casaca_pk_' + S.teamId, JSON.stringify(S.PK));
     S.LG = T.team.league ? await rpc('fc_league', { ...P(), p_team: S.teamId }).catch(() => S.LG) : null;
     LS.set('casaca_lg_' + S.teamId, JSON.stringify(S.LG));
     LS.set('casaca_t_' + S.teamId, JSON.stringify(S.T)); LS.set('casaca_tr_' + S.teamId, JSON.stringify(S.TR));
   }
   catch(e){
     const c = e.offline && LS.get('casaca_t_' + S.teamId);
-    if (c){ S.T = JSON.parse(c); S.LG = JSON.parse(LS.get('casaca_lg_' + S.teamId) || 'null'); S.TR = JSON.parse(LS.get('casaca_tr_' + S.teamId) || '{"trainings":[],"logs":[]}'); } else throw e;
+    if (c){ S.T = JSON.parse(c); S.LG = JSON.parse(LS.get('casaca_lg_' + S.teamId) || 'null'); S.TR = JSON.parse(LS.get('casaca_tr_' + S.teamId) || '{"trainings":[],"logs":[]}'); S.PK = JSON.parse(LS.get('casaca_pk_' + S.teamId) || 'null'); } else throw e;
   }
 }
 async function refresh(){ try { await loadTeam(); } catch(e){ toast(e.message); } render(); }
@@ -704,25 +708,38 @@ function joinSheet(){
 }
 function createTeamSheet(){
   const EMOJIS = ['⚽','🦐','🔥','🦁','🐺','🦅','⭐','🌵','🍀','⚡','🐉','🛡️'];
-  let emoji = '⚽', size = 11, plays = true;
+  let emoji = '⚽', size = 11, plays = true, kind = 'torneo', day = 4;
   const el = openSheet(`<h2>Crear equipo</h2>
     <p class="muted">Quedás como DT. Después invitás al resto con un link.</p>
     <form class="stack section" id="ct">
       <label class="field"><span>Nombre</span><input class="input" id="ct-n" maxlength="40" placeholder="Ej: Camarón"></label>
       <div class="field"><span>Escudo</span><div class="chips" id="ct-e">${EMOJIS.map(e => `<button type="button" class="chip ${e === emoji ? 'on' : ''}" data-e="${e}" style="font-size:22px;padding:0 10px">${e}</button>`).join('')}</div></div>
+      <div class="field"><span>¿Para qué es?</span><div class="seg" id="ct-k"><button type="button" data-k="torneo" class="on">🏆 Torneo</button><button type="button" data-k="amistosos">🤝 Amistosos</button></div><div class="hint" id="ct-kh">Equipo fijo: fixture, convocatoria, pizarra y puntajes del DT.</div></div>
+      <div class="stack" id="ct-am" hidden>
+        <label class="field"><span>¿Dónde juegan?</span><input class="input" id="ct-pl" maxlength="80" placeholder="Ej: Complejo El Potrero, cancha 2"></label>
+        <div class="field"><span>¿Qué día?</span><div class="chips" id="ct-d">${['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'].map((l,i) => `<button type="button" class="chip ${(i + 1) % 7 === day ? 'on' : ''}" data-d="${(i + 1) % 7}">${l}</button>`).join('')}</div></div>
+        <label class="field"><span>¿A qué hora?</span><input class="input" id="ct-h" type="time" value="19:00"></label>
+      </div>
       <div class="field"><span>¿Qué juegan?</span><div class="seg" id="ct-f">${FORMATS.map(([n,l]) => `<button type="button" data-n="${n}" class="${n === size ? 'on' : ''}">${l.replace('Fútbol ','F')}</button>`).join('')}</div></div>
       <div class="field"><span>¿Vos también jugás?</span><div class="seg" id="ct-p"><button type="button" data-v="1" class="on">Sí, DT y jugador</button><button type="button" data-v="0">No, solo dirijo</button></div></div>
       <button class="btn" type="submit">Crear equipo</button>
     </form>`);
   $$('#ct-e .chip', el).forEach(b => b.onclick = () => { emoji = b.dataset.e; $$('#ct-e .chip', el).forEach(x => x.classList.toggle('on', x === b)); });
   $$('#ct-f button', el).forEach(b => b.onclick = () => { size = +b.dataset.n; $$('#ct-f button', el).forEach(x => x.classList.toggle('on', x === b)); });
+  $$('#ct-k button', el).forEach(b => b.onclick = () => {
+    kind = b.dataset.k; $$('#ct-k button', el).forEach(x => x.classList.toggle('on', x === b));
+    $('#ct-am', el).hidden = kind !== 'amistosos';
+    $('#ct-kh', el).textContent = kind === 'amistosos' ? 'El fulbito de la semana: quién se suma, equipos oscuro y blanco, goles y figura. Cualquiera organiza.' : 'Equipo fijo: fixture, convocatoria, pizarra y puntajes del DT.';
+  });
+  $$('#ct-d .chip', el).forEach(b => b.onclick = () => { day = +b.dataset.d; $$('#ct-d .chip', el).forEach(x => x.classList.toggle('on', x === b)); });
   $$('#ct-p button', el).forEach(b => b.onclick = () => { plays = b.dataset.v === '1'; $$('#ct-p button', el).forEach(x => x.classList.toggle('on', x === b)); });
   $('#ct', el).onsubmit = async (e) => {
     e.preventDefault();
     const n = $('#ct-n', el).value.trim(); if (!n) return toast('Ponele nombre al equipo');
     try {
       S.teamId = await rpc('fc_team_create', { ...P(), p_name: n, p_emoji: emoji, p_players: size, p_plays: plays });
-      LS.set('casaca_team', S.teamId); closeSheet(); await loadMe(); await loadTeam(); S.tab = 'plantel'; render();
+      if (kind === 'amistosos') await rpc('fc_team_settings', { ...P(), p_team: S.teamId, p: { kind, place: $('#ct-pl', el).value.trim(), usual_day: day, usual_time: $('#ct-h', el).value || '19:00', usual_size: size * 2 } }).catch(() => toast('Falta actualizar la base para los amistosos'));
+      LS.set('casaca_team', S.teamId); closeSheet(); await loadMe(); await loadTeam(); S.tab = kind === 'amistosos' ? 'inicio' : 'plantel'; render();
       toast('Equipo creado. Ahora cargá el plantel o mandá la invitación.', 3500);
     } catch(err){ toast(err.message); }
   };
@@ -784,11 +801,13 @@ function render(){
       <button class="av" id="me-av" style="background:${avColor(S.me.user.nick)}" aria-label="Mi perfil">${esc(initials(meM ? meM.name : S.me.user.nick))}</button>
     </div></div>
     <main class="wrap" id="main"></main>
-    <nav class="tabs" aria-label="Secciones"><div class="inner">${TABS.map(([k,l]) => { const on = S.tab === k || (k === 'partidos' && S.tab === 'pizarra'); return `<button data-tab="${k}" class="${on ? 'on' : ''}" aria-current="${on ? 'page' : 'false'}">${ICONS[k]}${l}</button>`; }).join('')}</div></nav>`;
+    <nav class="tabs" aria-label="Secciones"><div class="inner">${(isPicadito() ? TABS_PK : TABS).map(([k,l]) => { const on = S.tab === k || (k === 'partidos' && S.tab === 'pizarra'); return `<button data-tab="${k}" class="${on ? 'on' : ''}" aria-current="${on ? 'page' : 'false'}">${ICONS[k]}${l}</button>`; }).join('')}</div></nav>`;
   $('#teamsel').onclick = teamsSheet;
   $('#me-av').onclick = profileSheet;
-  $$('nav.tabs button').forEach(b => b.onclick = () => { S.tab = b.dataset.tab; S.matchId = null; S.trainId = null; render(); scrollTo(0,0); });
-  ({ inicio: renderInicio, partidos: renderPartidos, pizarra: renderPizarra, entrenos: renderEntrenos, plantel: renderPlantel, tabla: renderTabla })[S.tab]();
+  $$('nav.tabs button').forEach(b => b.onclick = () => { S.tab = b.dataset.tab; S.matchId = null; S.trainId = null; S.pickId = null; render(); scrollTo(0,0); });
+  if (isPicadito() && S.tab === 'pizarra') S.tab = 'partidos';
+  (isPicadito() ? { inicio: renderHoy, partidos: renderFechas, entrenos: renderEntrenos, plantel: renderPlantel, tabla: renderTablaPicadito }
+    : { inicio: renderInicio, partidos: renderPartidos, pizarra: renderPizarra, entrenos: renderEntrenos, plantel: renderPlantel, tabla: renderTabla })[S.tab]();
   const pb = $('#pz-back'); if (pb) pb.onclick = () => { S.tab = 'partidos'; render(); scrollTo(0,0); };
 }
 function renderNoTeam(){
@@ -2330,6 +2349,264 @@ function linkPlayersSheet(){
 }
 const officialOf = (m) => LG() && m.ext_player_id ? LG().players.find(p => p.id === m.ext_player_id) : null;
 
+/* ============ Picadito (equipos de amistosos) ============ */
+// Funciona como el grupo de WhatsApp: lista numerada, equipos oscuro y blanco, y alguien que los arma (el que esté).
+const SIDE = { oscuro: 'Oscuro', claro: 'Blanco' };
+const DAYS_LONG = ['domingo','lunes','martes','miércoles','jueves','viernes','sábado'];
+const isPicadito = () => S.T && S.T.team.kind === 'amistosos';
+const pickups = () => S.PK || [];
+const pick = (id) => pickups().find(k => k.id === id);
+const currentPickup = () => pickups().find(k => k.status === 'abierta') || pickups().find(k => k.status === 'jugada' && k.finished_at && Date.now() - new Date(k.finished_at) < 48 * 36e5) || null;
+const pkGoing = (k) => k.players.filter(p => p.status === 'va').sort((a,b) => new Date(a.joined_at) - new Date(b.joined_at));
+const pkName = (id) => (member(id) || {}).name || '¿?';
+const pkHour = (iso) => { const d = new Date(iso); return `${d.getHours()}${d.getMinutes() ? ':' + String(d.getMinutes()).padStart(2,'0') : ''}hs`; };
+const pkTitle = (k) => k.starts_at ? `Fulbito ${DAYS_LONG[new Date(k.starts_at).getDay()]} ${pkHour(k.starts_at)}` : 'Fulbito';
+const mapsUrl = (k) => k.place_url || (k.place ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(k.place)}` : null);
+const pkWinner = (k) => k.status !== 'jugada' || k.score_dark == null ? null : k.score_dark > k.score_light ? 'oscuro' : k.score_dark < k.score_light ? 'claro' : 'empate';
+function pkMvp(k){
+  if (!k.votes.length || (k.finished_at && Date.now() - new Date(k.finished_at) < 48 * 36e5)) return [];
+  const c = {}; k.votes.forEach(v => c[v.voted_id] = (c[v.voted_id] || 0) + 1);
+  const max = Math.max(...Object.values(c)); return Object.keys(c).filter(x => c[x] === max);
+}
+// Estadísticas de cada uno en los picados jugados
+function pkStats(mid){
+  let pj = 0, g = 0, e = 0, p = 0, goles = 0, figs = 0;
+  pickups().filter(k => k.status === 'jugada').forEach(k => {
+    const me = k.players.find(x => x.member_id === mid && x.status === 'va' && x.side);
+    goles += k.goals.filter(x => x.member_id === mid).length;
+    if (pkMvp(k).includes(mid)) figs++;
+    if (!me) return; pj++;
+    const w = pkWinner(k); if (w === 'empate') e++; else if (w === me.side) g++; else if (w) p++;
+  });
+  return { pj, g, e, p, goles, figs, pct: pj ? Math.round((g + e * .5) / pj * 100) : null };
+}
+function nextUsualDate(){
+  const t = S.T.team, d = new Date(), day = t.usual_day ?? 4, [hh, mm] = (t.usual_time || '19:00').split(':').map(Number);
+  d.setHours(hh || 19, mm || 0, 0, 0);
+  let add = (day - d.getDay() + 7) % 7; if (add === 0 && d < new Date()) add = 7;
+  d.setDate(d.getDate() + add); return d;
+}
+async function loadPickups(){ S.PK = await rpc('fc_pickups', { ...P(), p_team: S.teamId }).catch(() => S.PK || []); }
+async function pkRefresh(){ await loadPickups(); render(); }
+async function pkCall(fn, args, msg){
+  try { await rpc(fn, { ...P(), ...args }); vibrate(15); await pkRefresh(); if (msg) toast(msg); return true; }
+  catch(e){ toast(e.code ? e.message : 'Todavía no anda: falta pegar el SQL del picadito en Supabase.', 3500); return false; }
+}
+function renderHoy(){
+  const k = S.pickId ? pick(S.pickId) : currentPickup();
+  if (!k){
+    const d = nextUsualDate(), t = S.T.team;
+    $('#main').innerHTML = `${pinnedCard()}<div class="card empty"><div class="big">⚽</div><h3>No hay fecha abierta</h3>
+      <p class="muted small" style="margin-top:4px">Abrí la del ${DAYS_LONG[d.getDay()]} y que se vayan sumando. Cualquiera del grupo puede.</p>
+      <button class="btn" id="pk-open" style="margin-top:14px">📣 Abrir fulbito ${DAYS_LONG[d.getDay()]} ${pkHour(d)}</button>
+      ${t.place ? `<p class="small muted" style="margin-top:8px">📍 ${esc(t.place)}</p>` : ''}</div>
+      ${pkFormCard()}`;
+    $('#pk-open').onclick = () => pickupEditSheet(null);
+    bindPinned($('#main'));
+    return;
+  }
+  const going = pkGoing(k), list = going.slice(0, k.capacity), wait = going.slice(k.capacity);
+  const mine = k.players.find(p => p.member_id === meId());
+  const out = k.players.filter(p => p.status !== 'va');
+  const sides = going.some(p => p.side);
+  const sc = { oscuro: k.goals.filter(g => g.side === 'oscuro').length, claro: k.goals.filter(g => g.side === 'claro').length };
+  const played = k.status === 'jugada', w = pkWinner(k), mvp = pkMvp(k).map(pkName);
+  const vOpen = played && k.finished_at && Date.now() - new Date(k.finished_at) < 48 * 36e5;
+  const myVote = k.votes.find(v => v.mine);
+  const sideList = (s) => going.filter(p => p.side === s).map(p => p.member_id);
+  const maps = mapsUrl(k);
+  $('#main').innerHTML = `
+    ${S.pickId ? '<button class="back" id="pk-back">← Historial</button>' : pinnedCard()}
+    <div class="hero" ${k.status === 'suspendida' ? 'style="background:linear-gradient(160deg,#6b6b6b,#3d3d3d)"' : ''}>
+      <div class="eyebrow">${k.status === 'suspendida' ? 'Suspendido' : played ? 'Jugado' : 'Se juega'}</div>
+      <h2>${esc(pkTitle(k))}</h2>
+      <div class="meta">${k.starts_at ? fmtWhen(k.starts_at, false) : ''}${k.place ? ` · 📍 ${maps ? `<a href="${maps}" target="_blank" rel="noopener" style="color:#fff">${esc(k.place)}</a>` : esc(k.place)}` : ''}</div>
+      ${k.note ? `<div class="meta" style="margin-top:4px">📝 ${esc(k.note)}</div>` : ''}
+      ${!played && k.status !== 'suspendida' ? `<div class="rsvp" style="margin-top:14px"><button class="voy ${mine && mine.status === 'va' ? 'on' : ''}" data-st="va"><span>⚽</span>Me sumo</button><button class="no_voy ${mine && mine.status === 'no' ? 'on' : ''}" data-st="no"><span>🙅</span>No puedo</button><button class="duda ${mine && mine.status === 'lesionado' ? 'on' : ''}" data-st="lesionado"><span>🤕</span>Lesionado</button></div>` : ''}
+      <div class="count">${list.length}/${k.capacity} anotados${wait.length ? ` · ${wait.length} en espera` : list.length < k.capacity ? ` · faltan ${k.capacity - list.length}` : ' · ¡completo!'}</div>
+    </div>
+    <div class="grid2" style="margin-top:12px"><button class="btn ghost sm" style="width:100%" id="pk-edit">✏️ Editar fecha</button><button class="btn ghost sm" style="width:100%" id="pk-copy">📋 Copiar lista</button></div>
+    ${k.price ? `<div class="card section row between" style="padding:12px 16px"><span><b>$${k.price.toLocaleString('es-AR')}</b> cada uno${k.alias ? `<br><span class="small muted">Alias: <b>${esc(k.alias)}</b></span>` : ''}</span>${k.alias ? '<button class="btn ghost sm" id="pk-alias" style="box-shadow:none">Copiar alias</button>' : ''}</div>` : ''}
+
+    ${sides ? `<div class="section"><div class="section-title"><h2>${played ? 'Resultado' : 'Equipos'}</h2><button class="link" id="pk-teams">Cambiar</button></div>
+      <div class="scoreboard" style="padding:14px"><div class="teams"><span class="tn">⚫ Oscuro</span><span class="sc">${played ? `${k.score_dark}-${k.score_light}` : `${sc.oscuro}-${sc.claro}`}</span><span class="tn">⚪ Blanco</span></div>
+        ${played ? `<div class="meta" style="margin-top:6px">${w === 'empate' ? 'Empate' : `Ganó ${SIDE[w]}`}${mvp.length ? ` · ⭐ ${esc(mvp.join(' y '))}` : ''}</div>` : ''}</div>
+      <div class="grid2" style="margin-top:10px;align-items:start">${['oscuro','claro'].map(s => `<div class="card" style="padding:10px 12px"><div class="mini" style="margin-bottom:6px">${s === 'oscuro' ? '⚫' : '⚪'} ${SIDE[s].toUpperCase()}${w === s ? ' 🏆' : ''}</div>${sideList(s).map(id => { const gs = k.goals.filter(g => g.member_id === id).length; return `<div style="font-weight:700;padding:3px 0">${esc(pkName(id))}${gs ? ` <span class="small">${'⚽'.repeat(Math.min(gs, 5))}</span>` : ''}</div>`; }).join('')}</div>`).join('')}</div>
+      ${!played && k.status !== 'suspendida' ? `<div class="grid2" style="margin-top:10px"><button class="btn sm" style="width:100%;background:#2b2b2b;box-shadow:0 3px 0 #000" data-goal="oscuro">＋ Gol Oscuro</button><button class="btn ghost sm" style="width:100%" data-goal="claro">＋ Gol Blanco</button></div>
+        ${k.goals.length ? `<div class="list" style="margin-top:10px">${k.goals.slice().reverse().map(g => `<div class="lrow" style="padding:6px 12px"><span>${g.side === 'oscuro' ? '⚫' : '⚪'}</span><span class="t"><b>⚽ ${esc(g.member_id ? pkName(g.member_id) : 'Gol')}</b></span><button class="link muted" data-ungoal="${g.id}">Deshacer</button></div>`).join('')}</div>` : ''}
+        <button class="btn bib section" id="pk-end">🏁 Terminó el partido</button>
+        <button class="link muted" id="pk-copyteams" style="display:block;margin:12px auto 0">📋 Copiar equipos para WhatsApp</button>` : ''}
+    </div>` : going.length >= 2 && k.status !== 'suspendida' ? `<button class="btn section" id="pk-teams">⚖️ Armar equipos</button>` : ''}
+
+    ${(played || k.status === 'suspendida') && !S.pickId ? `<button class="btn section" id="pk-open">📣 Abrir el próximo fulbito</button>` : ''}
+    ${vOpen ? `<div class="section"><button class="btn sky" id="pk-vote">${myVote ? `⭐ Votaste a ${esc(pkName(myVote.voted_id))} · cambiar` : '⭐ Votar la figura'}</button><p class="small muted" style="margin-top:6px">El resultado se ve a las 48 h.</p></div>` : ''}
+
+    <div class="section"><div class="section-title"><h2>La lista</h2><button class="link" id="pk-add">＋ Sumar a alguien</button></div>
+      ${list.length ? `<div class="list">${list.map((p, i) => pkRow(k, p, i + 1)).join('')}</div>` : '<p class="small muted">Todavía no se sumó nadie. ¡Arrancá vos!</p>'}
+      ${wait.length ? `<div class="mini" style="margin:12px 0 6px">⏳ EN ESPERA</div><div class="list">${wait.map((p, i) => pkRow(k, p, '+' + (i + 1))).join('')}</div>` : ''}
+      ${out.length ? `<p class="small muted" style="margin-top:10px">🙅 No pueden: ${out.map(p => esc(pkName(p.member_id)) + (p.status === 'lesionado' ? ' 🤕' : '')).join(', ')}</p>` : ''}
+    </div>`;
+  const on = (sel, fn) => { const e = $(sel); if (e) e.onclick = fn; };
+  on('#pk-back', () => { S.pickId = null; S.tab = 'partidos'; render(); scrollTo(0,0); });
+  $$('[data-st]').forEach(b => b.onclick = () => pkCall('fc_pickup_join', { p_pickup: k.id, p_member: null, p_status: b.dataset.st }, b.dataset.st === 'va' ? '¡Adentro! ⚽' : 'Anotado'));
+  on('#pk-edit', () => pickupEditSheet(k.id));
+  on('#pk-open', () => pickupEditSheet(null));
+  on('#pk-copy', async () => { (await copy(pkListText(k))) ? toast('Lista copiada. Pegala en el grupo.') : toast('No se pudo copiar'); });
+  on('#pk-alias', async () => { (await copy(k.alias)) ? toast('Alias copiado') : toast(k.alias, 5000); });
+  on('#pk-teams', () => teamsSheet2(k));
+  on('#pk-copyteams', async () => { (await copy(pkTeamsText(k))) ? toast('Equipos copiados. Pegalos en el grupo.') : toast('No se pudo copiar'); });
+  on('#pk-add', () => pkAddSheet(k));
+  on('#pk-end', () => pkEndSheet(k, sc));
+  on('#pk-vote', () => pkVoteSheet(k));
+  $$('[data-goal]').forEach(b => b.onclick = () => pkGoalSheet(k, b.dataset.goal));
+  $$('[data-ungoal]').forEach(b => b.onclick = () => pkCall('fc_pickup_goal', { p_pickup: k.id, p_member: null, p_side: 'oscuro', p_undo: b.dataset.ungoal }));
+  $$('[data-pp]').forEach(b => b.onclick = () => pkPersonSheet(k, b.dataset.pp));
+  bindPinned($('#main'));
+}
+function pkRow(k, p, n){
+  const m = member(p.member_id) || { name: '¿?' };
+  return `<button class="lrow" data-pp="${p.member_id}" style="padding:8px 12px;${p.member_id === meId() ? 'border-color:var(--grass)' : ''}"><span class="num" style="width:26px;font-size:18px;font-weight:900;color:var(--muted)">${n}</span><span class="t"><b>${esc(m.name)}</b>${m.guest ? '<small>Invitado</small>' : ''}</span>${p.side ? `<span class="pill">${p.side === 'oscuro' ? '⚫' : '⚪'} ${SIDE[p.side]}</span>` : ''}${k.price ? `<span class="pill ${p.paid ? 'ok' : ''}">${p.paid ? '💸 Pagó' : '💸'}</span>` : ''}</button>`;
+}
+function pkListText(k){
+  const going = pkGoing(k);
+  return `${k.place ? `*se juega en ${k.place}*\n` : ''}${pkTitle(k)}\n${going.slice(0, k.capacity).map((p, i) => `${i + 1}. ${pkName(p.member_id)}`).join('\n')}${going.length > k.capacity ? `\n\nEn espera:\n${going.slice(k.capacity).map(p => pkName(p.member_id)).join('\n')}` : ''}\n\nSumate en La Casaca: ${BASE}`;
+}
+function pkTeamsText(k){
+  const s = (x) => pkGoing(k).filter(p => p.side === x).map(p => pkName(p.member_id)).join('\n');
+  return `*oscuro*\n${s('oscuro')}\n\n*blanco*\n${s('claro')}`;
+}
+function pickupEditSheet(id){
+  const k = id ? pick(id) : null, t = S.T.team, d = k && k.starts_at ? new Date(k.starts_at) : nextUsualDate();
+  const el = openSheet(`<h2>${k ? 'Editar fecha' : 'Abrir fecha'}</h2>
+    <form class="stack section" id="pe">
+      <label class="field"><span>Día y hora</span><input class="input" id="pe-d" type="datetime-local" value="${toLocalInput(d.toISOString())}"></label>
+      <label class="field"><span>Lugar</span><input class="input" id="pe-p" maxlength="80" value="${esc((k ? k.place : t.place) || '')}" placeholder="Ej: SB5, predio de al lado"></label>
+      <label class="field"><span>Link de Google Maps (opcional)</span><input class="input" id="pe-u" inputmode="url" maxlength="300" value="${esc((k ? k.place_url : t.place_url) || '')}"></label>
+      <div class="grid2"><label class="field"><span>Cupo</span><input class="input" id="pe-c" type="number" inputmode="numeric" min="2" max="40" value="${(k ? k.capacity : t.usual_size) || 10}"></label>
+      <label class="field"><span>$ por persona</span><input class="input" id="pe-pr" type="number" inputmode="numeric" min="0" value="${(k ? k.price : t.price) || ''}" placeholder="Ej: 6000"></label></div>
+      <label class="field"><span>Alias para transferir</span><input class="input" id="pe-a" maxlength="60" value="${esc((k ? k.alias : t.alias) || '')}" placeholder="Ej: juan.perez.mp"></label>
+      <label class="field"><span>Nota (opcional)</span><input class="input" id="pe-n" maxlength="200" value="${esc((k && k.note) || '')}" placeholder="Ej: traigan pecheras"></label>
+      ${isDT() ? `<label class="row small" style="gap:8px"><input type="checkbox" id="pe-save" ${k ? '' : 'checked'}> Guardar lugar, horario, cupo y precio como los de siempre</label>` : ''}
+      <button class="btn" type="submit">${k ? 'Guardar' : '📣 Abrir la fecha'}</button>
+      ${k && k.status === 'abierta' ? '<button type="button" class="btn ghost" id="pe-susp">🌧️ Suspender</button>' : k && k.status === 'suspendida' ? '<button type="button" class="btn ghost" id="pe-re">Se juega igual</button>' : ''}
+    </form>`);
+  $('#pe', el).onsubmit = async (e) => {
+    e.preventDefault();
+    const dv = $('#pe-d', el).value, when = dv ? new Date(dv) : null;
+    const p = { starts_at: when ? when.toISOString() : '', place: $('#pe-p', el).value.trim(), place_url: $('#pe-u', el).value.trim(), capacity: $('#pe-c', el).value, price: $('#pe-pr', el).value, alias: $('#pe-a', el).value.trim(), note: $('#pe-n', el).value.trim() };
+    try {
+      const nid = await rpc('fc_pickup_save', { ...P(), p_team: S.teamId, p_id: id, p });
+      const sv = $('#pe-save', el);
+      if (sv && sv.checked) await rpc('fc_team_settings', { ...P(), p_team: S.teamId, p: { place: p.place, place_url: p.place_url, usual_size: p.capacity, price: p.price, alias: p.alias, ...(when ? { usual_day: when.getDay(), usual_time: `${String(when.getHours()).padStart(2,'0')}:${String(when.getMinutes()).padStart(2,'0')}` } : {}) } }).catch(() => {});
+      closeSheet(); await loadTeam(); S.pickId = null; render();
+      if (!id) toast('Fecha abierta. Mandá la lista al grupo 📣');
+    } catch(err){ toast(err.code ? err.message : 'Todavía no anda: falta pegar el SQL del picadito en Supabase.', 3500); }
+  };
+  const su = $('#pe-susp', el); if (su) su.onclick = () => { closeSheet(); pkCall('fc_pickup_save', { p_team: S.teamId, p_id: id, p: { status: 'suspendida' } }, 'Suspendido 🌧️'); };
+  const re = $('#pe-re', el); if (re) re.onclick = () => { closeSheet(); pkCall('fc_pickup_save', { p_team: S.teamId, p_id: id, p: { status: 'abierta' } }, '¡Se juega!'); };
+}
+function pkAddSheet(k){
+  const inList = new Set(k.players.filter(p => p.status === 'va').map(p => p.member_id));
+  const rest = activeMembers().filter(m => !inList.has(m.id)).sort((a,b) => (pkStats(b.id).pj - pkStats(a.id).pj) || a.name.localeCompare(b.name));
+  const el = openSheet(`<h2>Sumar a alguien</h2><p class="muted">Como en el grupo: anotás a otro y queda en la lista.</p>
+    <form class="row section" id="pa"><input class="input" id="pa-n" maxlength="30" placeholder="Nombre de alguien nuevo"><button class="btn sm" type="submit">Sumar</button></form>
+    <div class="list section">${rest.map(m => `<button class="lrow" data-m="${m.id}" style="padding:8px 12px"><span class="av" style="width:32px;height:32px;font-size:13px;background:${avColor(m.name)}">${esc(initials(m.name))}</span><span class="t"><b>${esc(m.name)}</b><small>${plural(pkStats(m.id).pj, 'picado', 'picados')}${m.guest ? ' · invitado' : ''}</small></span><span class="pill ok">＋</span></button>`).join('')}</div>`);
+  $$('[data-m]', el).forEach(b => b.onclick = () => { closeSheet(); pkCall('fc_pickup_join', { p_pickup: k.id, p_member: b.dataset.m, p_status: 'va' }, `${pkName(b.dataset.m)} adentro`); });
+  $('#pa', el).onsubmit = (e) => { e.preventDefault(); const n = $('#pa-n', el).value.trim(); if (!n) return; closeSheet(); pkCall('fc_pickup_guest', { p_pickup: k.id, p_name: n }, `${n} adentro`); };
+}
+function pkPersonSheet(k, mid){
+  const p = k.players.find(x => x.member_id === mid), s = pkStats(mid);
+  const el = openSheet(`<h2>${esc(pkName(mid))}</h2><p class="muted">${plural(s.pj, 'picado', 'picados')}${s.pct != null ? ` · gana el ${s.pct}%` : ''}${s.goles ? ` · ⚽ ${s.goles}` : ''}</p>
+    <div class="stack section">
+      ${k.price ? `<button class="btn ${p.paid ? 'ghost' : ''}" id="pp-paid">${p.paid ? 'Marcar que no pagó' : '💸 Marcar que pagó'}</button>` : ''}
+      <button class="btn ghost" id="pp-out">Bajarlo de la lista</button>
+    </div>`);
+  const pd = $('#pp-paid', el); if (pd) pd.onclick = () => { closeSheet(); pkCall('fc_pickup_paid', { p_pickup: k.id, p_member: mid, p_paid: !p.paid }, p.paid ? 'Listo' : 'Pagó 💸'); };
+  $('#pp-out', el).onclick = () => { closeSheet(); pkCall('fc_pickup_join', { p_pickup: k.id, p_member: mid, p_status: 'no' }, 'Bajado de la lista'); };
+}
+// Armar equipos: parejos automático (según la carta y cuánto gana cada uno) o a mano.
+function pkPower(mid){ const m = member(mid) || {}, s = pkStats(mid); return (m.overall ?? 65) + (s.pj >= 3 ? (s.pct - 50) / 5 : 0); }
+function balanceSides(ids){
+  const gk = ids.filter(id => ((member(id) || {}).positions || [])[0] === 'ARQ'), rest = ids.filter(id => !gk.includes(id)).sort((a,b) => pkPower(b) - pkPower(a));
+  const out = {}, tot = { oscuro: 0, claro: 0 }, cnt = { oscuro: 0, claro: 0 };
+  [...gk, ...rest].forEach(id => { const s = cnt.oscuro < cnt.claro ? 'oscuro' : cnt.claro < cnt.oscuro ? 'claro' : tot.oscuro <= tot.claro ? 'oscuro' : 'claro'; out[id] = s; tot[s] += pkPower(id); cnt[s]++; });
+  return out;
+}
+function teamsSheet2(k){
+  const ids = pkGoing(k).slice(0, k.capacity).map(p => p.member_id);
+  const sides = {}; pkGoing(k).forEach(p => { if (ids.includes(p.member_id)) sides[p.member_id] = p.side || null; });
+  const el = openSheet(`<h2>Armar equipos</h2><p class="muted">Tocá a cada uno para pasarlo de equipo, o pedí que la app los arme parejos.</p>
+    <button class="btn sky section" id="ts-auto">⚖️ Armar parejos automático</button>
+    <div class="grid2 section" id="ts-g" style="align-items:start"></div>
+    <button class="btn section" id="ts-ok">Guardar equipos</button>`);
+  const draw = () => {
+    const col = (s) => `<div class="card" style="padding:10px"><div class="mini" style="margin-bottom:6px">${s === 'oscuro' ? '⚫ OSCURO' : s === 'claro' ? '⚪ BLANCO' : 'SIN EQUIPO'} (${ids.filter(id => sides[id] === s).length})</div>${ids.filter(id => sides[id] === s).map(id => `<button class="chip" data-t="${id}" style="width:100%;margin-bottom:6px;justify-content:space-between">${esc(pkName(id))}<span class="mini">${Math.round(pkPower(id))}</span></button>`).join('')}</div>`;
+    $('#ts-g', el).innerHTML = col('oscuro') + col('claro') + (ids.some(id => !sides[id]) ? `<div style="grid-column:1/-1">${col(null)}</div>` : '');
+    $$('[data-t]', el).forEach(b => b.onclick = () => { const id = b.dataset.t; sides[id] = sides[id] === 'oscuro' ? 'claro' : sides[id] === 'claro' ? null : 'oscuro'; draw(); });
+  };
+  draw();
+  $('#ts-auto', el).onclick = () => { Object.assign(sides, balanceSides(ids)); draw(); toast('Equipos parejos. Retocá si querés.'); };
+  $('#ts-ok', el).onclick = async () => { closeSheet(); if (await pkCall('fc_pickup_sides', { p_pickup: k.id, p_sides: sides }, 'Equipos listos ⚽')) { (await copy(pkTeamsText(pick(k.id)))) && toast('Equipos listos y copiados para el grupo 📋', 3000); } };
+}
+function pkGoalSheet(k, side){
+  const ids = pkGoing(k).filter(p => p.side === side).map(p => p.member_id);
+  const el = openSheet(`<h2>⚽ Gol ${SIDE[side]}</h2><p class="muted">¿Quién lo hizo?</p>
+    <div class="list section">${ids.map(id => `<button class="lrow" data-s="${id}"><span class="av" style="background:${avColor(pkName(id))}">${esc(initials(pkName(id)))}</span><span class="t"><b>${esc(pkName(id))}</b></span></button>`).join('')}
+    <button class="lrow" data-s=""><span style="font-size:24px">🤷</span><span class="t"><b>No sé / en contra</b></span></button></div>`);
+  $$('[data-s]', el).forEach(b => b.onclick = () => { closeSheet(); pkCall('fc_pickup_goal', { p_pickup: k.id, p_member: b.dataset.s || null, p_side: side }, '⚽ ¡Gol!'); });
+}
+function pkEndSheet(k, sc){
+  const el = openSheet(`<h2>🏁 Resultado final</h2>
+    <div class="row section" style="justify-content:space-around;text-align:center">
+      <div><div class="mini" style="margin-bottom:8px">⚫ OSCURO</div>${stepperHTML('pe-o', sc.oscuro, 'goles oscuro')}</div>
+      <div><div class="mini" style="margin-bottom:8px">⚪ BLANCO</div>${stepperHTML('pe-b', sc.claro, 'goles blanco')}</div></div>
+    <button class="btn section" id="pe-ok">Guardar resultado</button><p class="small muted" style="margin-top:8px">Después se abre la votación de la figura por 48 h.</p>`);
+  bindSteppers(el, { 'pe-o': [0, 99, 1], 'pe-b': [0, 99, 1] });
+  $('#pe-ok', el).onclick = () => { closeSheet(); pkCall('fc_pickup_finish', { p_pickup: k.id, p_dark: stepVal(el, 'pe-o'), p_light: stepVal(el, 'pe-b') }, '¡Partido cargado! Voten la figura ⭐'); };
+}
+function pkVoteSheet(k){
+  const ids = pkGoing(k).filter(p => p.side && p.member_id !== meId()).map(p => p.member_id);
+  const my = k.votes.find(v => v.mine);
+  const el = openSheet(`<h2>⭐ Figura</h2><p class="muted">El voto es secreto.</p><div class="list section">${ids.map(id => `<button class="lrow" data-v="${id}"><span class="t"><b>${esc(pkName(id))}</b></span>${my && my.voted_id === id ? '<span class="pill sky">Tu voto</span>' : ''}</button>`).join('')}</div>`);
+  $$('[data-v]', el).forEach(b => b.onclick = () => { closeSheet(); pkCall('fc_pickup_vote', { p_pickup: k.id, p_voted: b.dataset.v }, 'Voto anotado ⭐'); });
+}
+function pkFormCard(){
+  const s = pkStats(meId());
+  return s.pj ? `<div class="card section row between"><span><b style="display:block">Tus picados</b><span class="mini">${s.pj} jugados · ${s.g}G ${s.e}E ${s.p}P${s.goles ? ` · ⚽ ${s.goles}` : ''}</span></span><span class="rate ${s.pct >= 60 ? 'r-hi' : s.pct >= 45 ? 'r-ok' : 'r-lo'}">${s.pct}%</span></div>` : '';
+}
+function renderFechas(){
+  const ks = pickups();
+  $('#main').innerHTML = `<div class="row between" style="margin-bottom:14px"><h1>Historial</h1><button class="btn sm" id="pk-new">＋ Fecha</button></div>
+    ${ks.length ? `<div class="list">${ks.map(k => { const w = pkWinner(k), mvp = pkMvp(k).map(pkName); return `<button class="card tap" data-k="${k.id}" style="padding:12px 14px"><span class="row between"><span><b style="display:block">${k.starts_at ? fmtWhen(k.starts_at, false) : 'Sin fecha'}</b><span class="small muted">${k.status === 'suspendida' ? '🌧️ Suspendido' : k.status === 'abierta' ? `${pkGoing(k).length}/${k.capacity} anotados` : (w === 'empate' ? 'Empate' : w ? `Ganó ${SIDE[w]}` : 'Jugado') + (mvp.length ? ` · ⭐ ${esc(mvp.join(', '))}` : '')}</span></span>
+      ${k.status === 'jugada' && k.score_dark != null ? `<span class="mres">${k.score_dark}-${k.score_light}</span>` : ''}</span></button>`; }).join('')}</div>` : '<div class="card empty"><div class="big">📅</div><h3>Todavía no hay fechas</h3></div>'}`;
+  $('#pk-new').onclick = () => pickupEditSheet(null);
+  $$('[data-k]').forEach(b => b.onclick = () => { S.pickId = b.dataset.k; S.tab = 'inicio'; render(); scrollTo(0,0); });
+}
+function renderTablaPicadito(){
+  const rows = activeMembers().map(m => ({ m, s: pkStats(m.id) })).filter(o => o.s.pj);
+  const minPj = Math.max(1, Math.ceil(pickups().filter(k => k.status === 'jugada').length / 4));
+  const k = ['pct','goles','pj','figs'].includes(S.pkSort) ? S.pkSort : 'pct';
+  const list = rows.filter(o => k !== 'pct' || o.s.pj >= minPj).sort((a,b) => (b.s[k] ?? -1) - (a.s[k] ?? -1) || b.s.pj - a.s.pj);
+  // Duplas: cuando juegan del mismo lado, ¿cuánto ganan?
+  const pairs = {};
+  pickups().filter(x => x.status === 'jugada' && pkWinner(x)).forEach(x => ['oscuro','claro'].forEach(sd => {
+    const ids = x.players.filter(p => p.status === 'va' && p.side === sd).map(p => p.member_id).sort(), w = pkWinner(x);
+    for (let i = 0; i < ids.length; i++) for (let j = i + 1; j < ids.length; j++){ const key = ids[i] + '|' + ids[j]; pairs[key] = pairs[key] || { n: 0, pts: 0 }; pairs[key].n++; pairs[key].pts += w === sd ? 1 : w === 'empate' ? .5 : 0; }
+  }));
+  const pr = Object.entries(pairs).filter(([,v]) => v.n >= 3).map(([key, v]) => ({ ids: key.split('|'), n: v.n, pct: Math.round(v.pts / v.n * 100) }));
+  const best = pr.slice().sort((a,b) => b.pct - a.pct || b.n - a.n).slice(0, 5), worst = pr.slice().sort((a,b) => a.pct - b.pct || b.n - a.n).slice(0, 3);
+  const mine = pr.filter(x => x.ids.includes(meId())).sort((a,b) => b.pct - a.pct);
+  $('#main').innerHTML = `<h1 style="margin-bottom:12px">Tabla</h1>
+    <div class="chips scroll" style="margin-bottom:12px">${[['pct','% victorias'],['goles','Goles'],['pj','Picados'],['figs','Figura']].map(([s,l]) => `<button class="chip ${s === k ? 'on' : ''}" data-s="${s}">${l}</button>`).join('')}</div>
+    ${list.length ? `<div class="list">${list.map((o, i) => `<button class="lrow" data-p="${o.m.id}" style="${o.m.id === meId() ? 'border-color:var(--grass)' : ''}"><span style="width:28px;text-align:center;font-size:20px">${['🥇','🥈','🥉'][i] || `<span class="mini">${i + 1}</span>`}</span><span class="t"><b>${esc(o.m.name)}</b><small>${o.s.pj} PJ · ${o.s.g}G ${o.s.e}E ${o.s.p}P · ⚽ ${o.s.goles}</small></span><span class="rate ${k === 'pct' ? (o.s.pct >= 60 ? 'r-hi' : o.s.pct >= 45 ? 'r-ok' : 'r-lo') : 'r-na'}" style="${k !== 'pct' ? 'color:var(--ink)' : ''}">${k === 'pct' ? o.s.pct + '%' : o.s[k]}</span></button>`).join('')}</div>${k === 'pct' ? `<p class="tiny muted" style="margin-top:6px">Entran los que jugaron ${plural(minPj, 'picado', 'picados')} o más. El empate cuenta medio.</p>` : ''}`
+      : '<div class="card empty muted">Cuando carguen resultados de los picados, acá aparece quién gana más.</div>'}
+    <div class="section"><div class="section-title"><h2>🔥 Duplas que ganan</h2></div>${best.length ? `<div class="list">${best.map(x => `<div class="lrow" style="padding:10px 12px"><span class="t"><b>${esc(pkName(x.ids[0]))} + ${esc(pkName(x.ids[1]))}</b><small>Juntos: ${plural(x.n, 'picado', 'picados')}</small></span><span class="rate r-hi" style="font-size:18px">${x.pct}%</span></div>`).join('')}</div>` : '<p class="small muted">Aparecen cuando dos jugaron juntos 3 veces o más.</p>'}</div>
+    ${worst.length ? `<div class="section"><div class="section-title"><h2>🧊 Duplas que no se entienden</h2></div><div class="list">${worst.map(x => `<div class="lrow" style="padding:10px 12px"><span class="t"><b>${esc(pkName(x.ids[0]))} + ${esc(pkName(x.ids[1]))}</b><small>Juntos: ${plural(x.n, 'picado', 'picados')}</small></span><span class="rate r-lo" style="font-size:18px">${x.pct}%</span></div>`).join('')}</div></div>` : ''}
+    ${mine.length ? `<div class="section"><div class="section-title"><h2>Con quién ganás más</h2></div><div class="list">${mine.slice(0, 5).map(x => { const o = x.ids.find(i => i !== meId()); return `<div class="lrow" style="padding:10px 12px"><span class="t"><b>${esc(pkName(o))}</b><small>Juntos: ${plural(x.n, 'picado', 'picados')}</small></span><span class="rate ${x.pct >= 50 ? 'r-ok' : 'r-lo'}" style="font-size:18px">${x.pct}%</span></div>`; }).join('')}</div></div>` : ''}`;
+  $$('[data-s]').forEach(b => b.onclick = () => { S.pkSort = b.dataset.s; renderTablaPicadito(); });
+  $$('[data-p]').forEach(b => b.onclick = () => playerSheet(b.dataset.p));
+}
+
 /* ============ Perfil y ajustes ============ */
 function profileSheet(){
   const dt = isDT(), t = S.T.team, m = member(meId());
@@ -2371,11 +2648,21 @@ function inviteSheet(){
 }
 function settingsSheet(){
   const t = S.T.team;
-  let size = t.players_on_field, pub = t.ratings_public;
+  let size = t.players_on_field, pub = t.ratings_public, kind = t.kind || 'torneo', day = t.usual_day ?? 4;
   const el = openSheet(`<h2>Ajustes del equipo</h2>
     <form class="stack section" id="st">
       <div class="grid2" style="grid-template-columns:80px 1fr"><label class="field"><span>Escudo</span><input class="input" id="st-e" maxlength="4" value="${esc(t.emoji)}" style="text-align:center;font-size:24px"></label>
       <label class="field"><span>Nombre</span><input class="input" id="st-n" maxlength="40" value="${esc(t.name)}"></label></div>
+      <div class="field"><span>¿Para qué es?</span><div class="seg" id="st-k"><button type="button" data-k="torneo" class="${kind === 'torneo' ? 'on' : ''}">🏆 Torneo</button><button type="button" data-k="amistosos" class="${kind === 'amistosos' ? 'on' : ''}">🤝 Amistosos</button></div></div>
+      <div class="stack" id="st-am" ${kind === 'amistosos' ? '' : 'hidden'}>
+        <label class="field"><span>Cancha de siempre</span><input class="input" id="st-pl" maxlength="80" value="${esc(t.place || '')}" placeholder="Ej: Complejo El Potrero"></label>
+        <label class="field"><span>Link de Google Maps (opcional)</span><input class="input" id="st-pu" maxlength="300" value="${esc(t.place_url || '')}" placeholder="https://maps.app.goo.gl/…"></label>
+        <div class="field"><span>Día de siempre</span><div class="chips" id="st-d">${['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'].map((l,i) => `<button type="button" class="chip ${(i + 1) % 7 === day ? 'on' : ''}" data-d="${(i + 1) % 7}">${l}</button>`).join('')}</div></div>
+        <div class="grid2"><label class="field"><span>Hora</span><input class="input" id="st-h" type="time" value="${esc(t.usual_time || '19:00')}"></label>
+        <label class="field"><span>Cupo</span><input class="input" id="st-cu" type="number" inputmode="numeric" min="2" max="40" value="${t.usual_size || size * 2}"></label></div>
+        <div class="grid2"><label class="field"><span>Precio por cabeza</span><input class="input" id="st-pr" type="number" inputmode="numeric" min="0" value="${t.price ?? ''}" placeholder="$"></label>
+        <label class="field"><span>Alias para pagar</span><input class="input" id="st-al" maxlength="60" value="${esc(t.alias || '')}" placeholder="cancha.potrero"></label></div>
+      </div>
       <label class="field"><span>Categoría o torneo</span><input class="input" id="st-c" maxlength="40" value="${esc(t.category || '')}" placeholder="Ej: Alto Nono · Primera"></label>
       <div class="field"><span>¿Qué juegan?</span><div class="seg" id="st-f">${FORMATS.map(([n,l]) => `<button type="button" data-n="${n}" class="${n === size ? 'on' : ''}">${l.replace('Fútbol ','F')}</button>`).join('')}</div><div class="hint">Cambia las formaciones de la pizarra.</div></div>
       <div class="field"><span>¿Quién arma las cartas?</span><div class="seg" id="st-cm">${[['dt','Solo el DT'],['staff','DT y ayudantes'],['self','Cada uno la suya']].map(([k,l]) => `<button type="button" data-k="${k}" class="${cardMode() === k ? 'on' : ''}">${l}</button>`).join('')}</div><div class="hint">Si cada uno arma la suya, el DT igual las ve y las puede corregir.</div></div>
@@ -2387,11 +2674,14 @@ function settingsSheet(){
     <button class="btn ghost section" id="st-lg">🏆 ${S.LG ? 'Torneo conectado: ' + esc(S.LG.torneo_name || S.LG.site) : 'Conectar el torneo oficial'}</button>`);
   $('#st-lg', el).onclick = () => { closeSheet(); setTimeout(leagueSetSheet, 80); };
   $$('#st-f button', el).forEach(b => b.onclick = () => { size = +b.dataset.n; $$('#st-f button', el).forEach(x => x.classList.toggle('on', x === b)); });
+  $$('#st-k button', el).forEach(b => b.onclick = () => { kind = b.dataset.k; $$('#st-k button', el).forEach(x => x.classList.toggle('on', x === b)); $('#st-am', el).hidden = kind !== 'amistosos'; });
+  $$('#st-d .chip', el).forEach(b => b.onclick = () => { day = +b.dataset.d; $$('#st-d .chip', el).forEach(x => x.classList.toggle('on', x === b)); });
   let cm = cardMode();
   $$('#st-cm button', el).forEach(b => b.onclick = () => { cm = b.dataset.k; $$('#st-cm button', el).forEach(x => x.classList.toggle('on', x === b)); });
   $$('#st-p button', el).forEach(b => b.onclick = () => { pub = b.dataset.v === '1'; $$('#st-p button', el).forEach(x => x.classList.toggle('on', x === b)); });
   const save = async (p, msg) => { try { await rpc('fc_team_settings', { ...P(), p_team: S.teamId, p }); closeSheet(); await loadMe(); await refresh(); toast(msg); } catch(e){ toast(e.message); } };
-  $('#st', el).onsubmit = (e) => { e.preventDefault(); if (size !== t.players_on_field) PZ = null; save({ name: $('#st-n', el).value.trim(), emoji: $('#st-e', el).value.trim(), category: $('#st-c', el).value.trim(), players_on_field: size, ratings_public: pub, card_mode: cm }, 'Ajustes guardados'); };
+  $('#st', el).onsubmit = (e) => { e.preventDefault(); if (size !== t.players_on_field) PZ = null; save({ name: $('#st-n', el).value.trim(), emoji: $('#st-e', el).value.trim(), category: $('#st-c', el).value.trim(), players_on_field: size, ratings_public: pub, card_mode: cm,
+    kind, ...(kind === 'amistosos' ? { place: $('#st-pl', el).value.trim(), place_url: $('#st-pu', el).value.trim(), usual_day: day, usual_time: $('#st-h', el).value, usual_size: $('#st-cu', el).value, price: $('#st-pr', el).value, alias: $('#st-al', el).value.trim() } : {}) }, 'Ajustes guardados'); };
   $('#st-nc', el).onclick = () => save({ new_code: true }, 'Código de jugadores nuevo');
   $('#st-nd', el).onclick = () => save({ new_dt_code: true }, 'Código de DT nuevo');
 }
