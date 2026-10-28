@@ -439,7 +439,13 @@ const S = {
   tablaView: LS.get('casaca_tabla') || 'ranking', sortBy: 'avg'
 };
 const P = () => ({ p_token: S.token });
+const ROLE = { dt: 'DT', ayudante: 'Ayudante', delegado: 'Delegado', jugador: 'Jugador' };
+// DT: todo. Ayudante: administra el equipo menos puntajes y roles. DT del partido: maneja ese partido y lo puntúa.
 const isDT = () => S.T && S.T.me.role === 'dt';
+const isAdmin = () => S.T && ['dt','ayudante'].includes(S.T.me.role);
+const canMatch = (x) => isAdmin() || x.dt_member === meId();
+const canRate = (x) => isDT() || x.dt_member === meId();
+const canBoard = () => isAdmin() || S.T.matches.some(x => !x.played && x.dt_member === meId());
 const meId = () => S.T && S.T.me.id;
 const member = (id) => S.T.members.find(m => m.id === id);
 const activeMembers = () => S.T.members.filter(m => m.active);
@@ -711,7 +717,7 @@ function render(){
   if (!S.me){ renderWelcome(); return; }
   if (!S.T){ renderNoTeam(); return; }
   const t = S.T.team;
-  const role = { dt: 'DT', delegado: 'Delegado', jugador: '' }[S.T.me.role];
+  const role = S.T.me.role === 'jugador' ? '' : ROLE[S.T.me.role];
   const meM = member(meId());
   $('#app').innerHTML = `
     <div class="status"><div class="offline" id="offline" ${netOnline ? 'hidden' : ''}>Sin señal: estás viendo lo último que se cargó</div><div class="inner">
@@ -737,7 +743,7 @@ function renderNoTeam(){
 }
 function teamsSheet(){
   const el = openSheet(`<h2>Mis equipos</h2>
-    <div class="list section" style="margin-top:14px">${S.me.teams.map(t => `<button class="lrow" data-id="${t.id}"><span style="font-size:28px">${esc(t.emoji)}</span><span class="t"><b>${esc(t.name)}</b><small>${t.role === 'dt' ? 'DT' : t.role === 'delegado' ? 'Delegado' : 'Jugador'}</small></span>${t.id === S.teamId ? '<span class="pill ok">Viendo</span>' : ''}</button>`).join('')}</div>
+    <div class="list section" style="margin-top:14px">${S.me.teams.map(t => `<button class="lrow" data-id="${t.id}"><span style="font-size:28px">${esc(t.emoji)}</span><span class="t"><b>${esc(t.name)}</b><small>${ROLE[t.role] || 'Jugador'}</small></span>${t.id === S.teamId ? '<span class="pill ok">Viendo</span>' : ''}</button>`).join('')}</div>
     <div class="grid2 section"><button class="btn ghost sm" style="width:100%" id="ts-j">🔑 Sumarme</button><button class="btn ghost sm" style="width:100%" id="ts-c">＋ Crear equipo</button></div>`);
   $$('.lrow', el).forEach(b => b.onclick = async () => { closeSheet(); if (b.dataset.id === S.teamId) return; S.teamId = b.dataset.id; S.matchId = null; LS.set('casaca_team', S.teamId); $('#main').innerHTML = '<div class="spinner"></div>'; await refresh(); });
   $('#ts-j', el).onclick = joinSheet; $('#ts-c', el).onclick = createTeamSheet;
@@ -797,10 +803,11 @@ function renderInicio(){
       <div class="eyebrow">Próximo partido${nx.kind === 'amistoso' ? ' · amistoso' : ''}</div>
       <h2>vs ${esc(nx.opponent)}</h2>
       <div class="meta">${fmtWhen(nx.starts_at)}${nx.venue ? ` · ${esc(nx.venue)}` : ''}</div>
+      ${nx.dt_member === meId() && !isDT() ? `<div class="count" style="margin-top:8px">📋 Este partido lo dirigís vos: armás la convocatoria, la pizarra y el resultado.</div>` : ''}
       ${m && m.plays ? `<div style="margin-top:14px">${rsvpButtons(nx, mine && mine.answer)}</div>` : ''}
       <div class="count">👍 ${cnt.voy} van · 🤔 ${cnt.duda} dudan · 🙅 ${cnt.no} no van${cnt.pending.length ? ` · ${cnt.pending.length} sin responder` : ''}</div>
       <button class="link" id="nx-open" style="color:#fff;margin-top:10px;text-decoration:underline">Ver convocatoria</button>
-    </div>` : `<div class="card empty"><div class="big">🗓️</div><h3>No hay partidos en agenda</h3><p class="muted small" style="margin-top:4px">${isDT() ? 'Cargá el próximo y el plantel confirma desde acá.' : 'Cuando el DT cargue el próximo, confirmás desde acá.'}</p>${isDT() ? '<button class="btn sm" id="nx-new" style="margin-top:12px">＋ Cargar partido</button>' : ''}</div>`}
+    </div>` : `<div class="card empty"><div class="big">🗓️</div><h3>No hay partidos en agenda</h3><p class="muted small" style="margin-top:4px">${isAdmin() ? 'Cargá el próximo y el plantel confirma desde acá.' : 'Cuando el DT cargue el próximo, confirmás desde acá.'}</p>${isAdmin() ? '<button class="btn sm" id="nx-new" style="margin-top:12px">＋ Cargar partido</button>' : ''}</div>`}
 
     ${pend.length && m && m.plays ? `<div class="section"><div class="section-title"><h2>Cargá tus números</h2></div>
       <p class="muted small" style="margin:-4px 0 10px">Goles, asistencias y tarjetas: cada uno carga lo suyo y el DT solo pone el puntaje.</p>
@@ -815,7 +822,7 @@ function renderInicio(){
     </div>` : ''}
 
     ${last ? `<div class="section"><div class="section-title"><h2>Último partido</h2></div>${matchCard(last)}</div>` : ''}
-    ${isDT() && !T.members.some(x => x.claimed && x.id !== meId()) ? inviteCard() : ''}`;
+    ${isAdmin() && !T.members.some(x => x.claimed && x.id !== meId()) ? inviteCard() : ''}`;
   bindRsvp($('#main'));
   const o = $('#nx-open'); if (o) o.onclick = () => openMatch(nx.id);
   const nn = $('#nx-new'); if (nn) nn.onclick = () => matchEditSheet(null);
@@ -861,17 +868,18 @@ function renderPartidos(){
   const rec = { G: 0, E: 0, P: 0 }; let gf = 0, gc = 0;
   playedMatches().forEach(x => { const r = wdl(x); if (rec[r] != null) rec[r]++; gf += x.goals_for || 0; gc += x.goals_against || 0; });
   $('#main').innerHTML = `
-    <div class="row between" style="margin-bottom:14px"><h1>Partidos</h1>${isDT() ? '<button class="btn sm" id="m-new">＋ Partido</button>' : ''}</div>
+    <div class="row between" style="margin-bottom:14px"><h1>Partidos</h1>${isAdmin() ? '<button class="btn sm" id="m-new">＋ Partido</button>' : ''}</div>
     ${done.length ? `<div class="kpis" style="margin-bottom:6px"><div><b>${done.length}</b><span>Jugados</span></div><div><b style="color:var(--grass)">${rec.G}</b><span>Ganados</span></div><div><b style="color:var(--gold)">${rec.E}</b><span>Empates</span></div><div><b style="color:var(--coral)">${rec.P}</b><span>Perdidos</span></div></div>
       <p class="small muted">${gf || gc ? `Goles a favor ${gf} · en contra ${gc}` : ''}${done.some(x => wdl(x) === 'N') ? `${gf || gc ? ' · ' : ''}${plural(done.filter(x => wdl(x) === 'N').length, 'partido sin resultado cargado', 'partidos sin resultado cargado')}` : ''}</p>` : ''}
     ${up.length ? `<div class="section"><div class="section-title"><h2>Se vienen</h2></div><div class="list">${up.map(matchCard).join('')}</div></div>` : ''}
     ${done.length ? `<div class="section"><div class="section-title"><h2>Jugados</h2></div><div class="list">${done.map(matchCard).join('')}</div></div>` : ''}
-    ${!S.T.matches.length ? `<div class="card empty"><div class="big">🏟️</div><h3>Todavía no hay partidos</h3><p class="muted small">${isDT() ? 'Cargá el primero: rival, día y cancha.' : 'Cuando el DT cargue uno, aparece acá.'}</p></div>` : ''}`;
+    ${!S.T.matches.length ? `<div class="card empty"><div class="big">🏟️</div><h3>Todavía no hay partidos</h3><p class="muted small">${isAdmin() ? 'Cargá el primero: rival, día y cancha.' : 'Cuando el DT cargue uno, aparece acá.'}</p></div>` : ''}`;
   const n = $('#m-new'); if (n) n.onclick = () => matchEditSheet(null);
   bindMatchCards($('#main'));
 }
 function renderMatch(id){
-  const T = S.T, x = T.matches.find(y => y.id === id), dt = isDT();
+  const T = S.T, x = T.matches.find(y => y.id === id), dt = canMatch(x), rater = canRate(x), adm = isAdmin();
+  const boss = x.dt_member && member(x.dt_member);
   const cs = T.callups.filter(c => c.match_id === id);
   const st = T.stats.filter(s => s.match_id === id);
   const mine = st.find(s => s.member_id === meId());
@@ -884,7 +892,7 @@ function renderMatch(id){
   const vOpen = votingOpen(x);
   const myVote = T.votes.find(v => v.match_id === id && v.mine);
   const nVotes = T.votes.filter(v => v.match_id === id).length;
-  const showRatings = T.team.ratings_public || dt;
+  const showRatings = T.team.ratings_public || rater;
   const person = (o, extra = '') => `<button class="lrow" ${dt ? `data-who="${o.m.id}"` : 'disabled'} style="padding:8px 10px"><span class="av" style="width:32px;height:32px;font-size:13px;background:${avColor(o.m.name)}">${esc(initials(o.m.name))}</span><span class="t"><b>${esc(o.m.name)}</b>${o.c && o.c.reason ? `<small>${esc(o.c.reason)}</small>` : ''}</span>${extra}</button>`;
   $('#main').innerHTML = `
     <button class="back" id="back">← Partidos</button>
@@ -893,6 +901,7 @@ function renderMatch(id){
       <div class="teams"><span class="tn">${esc(T.team.emoji)} ${esc(T.team.name)}</span>
         <span class="sc">${x.played && x.goals_for != null ? `${x.goals_for}-${x.goals_against}` : 'vs'}</span>
         <span class="tn">${esc(x.opponent)}</span></div>
+      ${boss ? `<div class="meta" style="margin-top:8px">📋 Dirige ${esc(boss.name)}${boss.id === meId() ? ' (vos)' : ''}</div>` : ''}
       ${x.difficulty ? `<div class="meta" style="margin-top:8px">Rival <span class="stars">${'★'.repeat(x.difficulty)}<i style="color:rgba(255,255,255,.25)">${'★'.repeat(5 - x.difficulty)}</i></span></div>` : ''}
     </div>
     ${dt ? `<div class="grid2" style="margin-top:12px"><button class="btn ghost sm" style="width:100%" id="m-edit">✏️ Editar</button><button class="btn sm" style="width:100%" id="m-res">${x.played ? '🏁 Resultado' : '🏁 Cargar resultado'}</button></div>` : ''}
@@ -919,14 +928,14 @@ function renderMatch(id){
         : `<button class="btn sky" id="m-vote">${myVote ? `Votaste a ${esc((member(myVote.voted_id) || {}).name || '')} · cambiar` : 'Votar la figura'}</button><p class="small muted" style="margin-top:6px">Cierra ${closesIn(x)}. El resultado se ve cuando cierra.</p>`}
     </div>` : ''}
 
-    ${x.played ? `<div class="section"><div class="section-title"><h2>Planilla</h2>${dt ? '<button class="btn sm" id="m-rate">Puntuar</button>' : ''}</div>
+    ${x.played ? `<div class="section"><div class="section-title"><h2>Planilla</h2>${dt ? `<button class="btn sm" id="m-rate">${rater ? 'Puntuar' : 'Cargar números'}</button>` : ''}</div>
       ${played.length ? `<div class="sheetwrap"><table class="pl"><thead><tr><th class="l">Jugador</th><th>⚽</th><th>🅰️</th><th>🟨</th>${showRatings ? '<th>DT</th>' : ''}</tr></thead><tbody>
         ${played.map(o => `<tr><td class="l ${o.m.id === meId() ? 'me' : ''}">${esc(o.m.name)}${o.s.by_self ? ' <span title="Lo cargó el jugador">✍️</span>' : ''}</td><td>${o.s.goals || '·'}</td><td>${o.s.assists || '·'}</td><td>${o.s.yellow ? '🟨'.repeat(o.s.yellow) : ''}${o.s.red ? '🟥' : ''}${!o.s.yellow && !o.s.red ? '·' : ''}</td>${showRatings ? `<td>${o.s.dt_rating != null ? `<span class="cell ${rateCls(+o.s.dt_rating)}">${fmt1(+o.s.dt_rating)}</span>` : '·'}</td>` : ''}</tr>`).join('')}
       </tbody></table></div>
       <p class="tiny muted" style="margin-top:6px">✍️ = lo cargó el jugador${showRatings ? '' : ' · Los puntajes del DT los ve cada uno el suyo'}.</p>`
       : `<div class="card empty small muted">Todavía nadie cargó sus números de este partido.</div>`}
     </div>` : ''}
-    ${dt ? `<button class="link danger" id="m-del" style="display:block;margin:30px auto 0">Borrar partido</button>` : ''}`;
+    ${adm ? `<button class="link danger" id="m-del" style="display:block;margin:30px auto 0">Borrar partido</button>` : ''}`;
   $('#back').onclick = () => { S.matchId = null; render(); };
   bindRsvp($('#main'));
   const on = (sel, fn) => { const e = $(sel); if (e) e.onclick = fn; };
@@ -949,8 +958,9 @@ function dtAnswerSheet(matchId, memberId){
   $('#da-clear', el).onclick = () => { closeSheet(); answer(matchId, '', null, memberId); };
 }
 function matchEditSheet(id){
-  const x = id ? S.T.matches.find(y => y.id === id) : { opponent: '', kind: 'oficial', difficulty: null };
+  const x = id ? S.T.matches.find(y => y.id === id) : { opponent: '', kind: 'oficial', difficulty: null, dt_member: null };
   let kind = x.kind, diff = x.difficulty;
+  const bosses = activeMembers().filter(m => m.claimed && m.role !== 'dt').sort((a,b) => a.name.localeCompare(b.name));
   const el = openSheet(`<h2>${id ? 'Editar partido' : 'Nuevo partido'}</h2>
     <form class="stack section" id="me">
       <label class="field"><span>Rival</span><input class="input" id="me-o" maxlength="40" value="${esc(x.opponent)}" placeholder="Ej: Fleni FC" required></label>
@@ -958,6 +968,8 @@ function matchEditSheet(id){
       <label class="field"><span>Cancha</span><input class="input" id="me-v" maxlength="60" value="${esc(x.venue || '')}" placeholder="Ej: Cancha 2, Alto Nono"></label>
       <div class="field"><span>Tipo</span><div class="seg" id="me-k"><button type="button" data-k="oficial" class="${kind === 'oficial' ? 'on' : ''}">Torneo</button><button type="button" data-k="amistoso" class="${kind === 'amistoso' ? 'on' : ''}">Amistoso</button></div></div>
       <div class="field"><span>Dificultad del rival</span><div class="chips" id="me-s">${[1,2,3,4,5].map(n => `<button type="button" class="chip ${diff === n ? 'on' : ''}" data-s="${n}">${'★'.repeat(n)}</button>`).join('')}</div></div>
+      ${isAdmin() ? `<label class="field"><span>¿Quién lo dirige?</span><select class="input" id="me-b"><option value="">El DT de siempre</option>${bosses.map(m => `<option value="${m.id}" ${x.dt_member === m.id ? 'selected' : ''}>${esc(m.name)}</option>`).join('')}</select>
+        <div class="hint">Si el DT no puede ir, elegí quién lo reemplaza: ese partido lo maneja él (convocatoria, pizarra, resultado y puntajes).</div></label>` : ''}
       <label class="field"><span>Notas del rival</span><textarea class="input" id="me-n" maxlength="500" placeholder="Ej: juegan largo, el 9 es rápido">${esc(x.notes || '')}</textarea></label>
       <button class="btn" type="submit">${id ? 'Guardar' : 'Crear partido'}</button>
     </form>`);
@@ -967,6 +979,7 @@ function matchEditSheet(id){
     e.preventDefault();
     const d = $('#me-d', el).value;
     const p = { opponent: $('#me-o', el).value.trim(), starts_at: d ? new Date(d).toISOString() : '', venue: $('#me-v', el).value.trim(), kind, difficulty: diff ?? '', notes: $('#me-n', el).value.trim() };
+    const bsel = $('#me-b', el); if (bsel) p.dt_member = bsel.value;
     if (!p.opponent) return toast('Poné el rival');
     try { const nid = await rpc('fc_match_save', { ...P(), p_team: S.teamId, p_id: id, p }); closeSheet(); await loadTeam(); openMatch(nid); toast(id ? 'Partido guardado' : 'Partido creado. Ya pueden confirmar.'); }
     catch(err){ toast(err.message); }
@@ -991,7 +1004,7 @@ function resultSheet(id){
 }
 // Cada jugador carga lo suyo. El DT puede abrirla para cualquiera y además pone el puntaje.
 function myStatsSheet(matchId, memberId){
-  const x = S.T.matches.find(y => y.id === matchId), m = member(memberId), self = memberId === meId(), dt = isDT();
+  const x = S.T.matches.find(y => y.id === matchId), m = member(memberId), self = memberId === meId(), dt = canRate(x);
   const s = S.T.stats.find(z => z.match_id === matchId && z.member_id === memberId) || { played: true, goals: 0, assists: 0, yellow: 0, red: false, self_rating: null, dt_rating: null, note: '' };
   let played = s.played, red = s.red, selfR = s.self_rating != null ? +s.self_rating : null;
   const el = openSheet(`<h2>${self ? 'Mis números' : esc(m.name)}</h2><p class="muted">vs ${esc(x.opponent)} · ${fmtWhen(x.starts_at, false)}</p>
@@ -1024,23 +1037,23 @@ function myStatsSheet(matchId, memberId){
 }
 // El DT puntúa a todos de una: lista con stepper por jugador.
 function rateSheet(matchId){
-  const x = S.T.matches.find(y => y.id === matchId);
+  const x = S.T.matches.find(y => y.id === matchId), rater = canRate(x);
   const st = S.T.stats.filter(s => s.match_id === matchId);
   const voy = S.T.callups.filter(c => c.match_id === matchId && c.answer === 'voy').map(c => c.member_id);
   const rows = players().map(m => ({ m, s: st.find(s => s.member_id === m.id) }))
     .sort((a,b) => (b.s ? (b.s.played ? 2 : 1) : voy.includes(b.m.id) ? 1.5 : 0) - (a.s ? (a.s.played ? 2 : 1) : voy.includes(a.m.id) ? 1.5 : 0) || a.m.name.localeCompare(b.m.name));
-  const el = openSheet(`<h2>Puntuar</h2><p class="muted">vs ${esc(x.opponent)} · del 0 al 10. Tocá el nombre para cargar goles o tarjetas.</p>
+  const el = openSheet(`<h2>${rater ? 'Puntuar' : 'Cargar números'}</h2><p class="muted">vs ${esc(x.opponent)} · ${rater ? 'del 0 al 10. ' : ''}Tocá el nombre para cargar goles o tarjetas.</p>
     <div class="card section" style="padding:0 14px" id="rt">${rows.map(({ m, s }) => {
       const on = s ? s.played : voy.includes(m.id);
       return `<div class="dtrow" data-id="${m.id}" data-on="${on ? 1 : 0}">
         <button class="who" data-edit="${m.id}"><span class="av" style="width:32px;height:32px;font-size:13px;background:${avColor(m.name)}">${esc(initials(m.name))}</span><span style="min-width:0"><b style="display:block">${esc(m.name)}</b><span class="mini">${s && s.played ? `⚽${s.goals} 🅰️${s.assists}${s.by_self ? ' ✍️' : ''}` : on ? 'Convocado' : 'No jugó'}</span></span></button>
-        <div class="row" style="gap:6px">${stepperHTML('rt-' + m.id, s && s.dt_rating != null ? fmt1(+s.dt_rating) : '—', 'puntaje de ' + m.name)}</div>
+        <div class="row" style="gap:6px">${!rater ? '' : stepperHTML('rt-' + m.id, s && s.dt_rating != null ? fmt1(+s.dt_rating) : '—', 'puntaje de ' + m.name)}</div>
       </div>`; }).join('')}</div>
-    <button class="btn section" id="rt-ok">Guardar puntajes</button>`);
+    ${rater ? '<button class="btn section" id="rt-ok">Guardar puntajes</button>' : ''}`);
   const limits = {}; rows.forEach(({ m }) => limits['rt-' + m.id] = [0, 10, .5, 6]);
   bindSteppers(el, limits);
   $$('[data-edit]', el).forEach(b => b.onclick = () => { closeSheet(); setTimeout(() => myStatsSheet(matchId, b.dataset.edit), 80); });
-  $('#rt-ok', el).onclick = async () => {
+  if (rater) $('#rt-ok', el).onclick = async () => {
     const b = $('#rt-ok', el); b.disabled = true; b.textContent = 'Guardando…';
     const jobs = [];
     rows.forEach(({ m, s }) => {
@@ -1090,7 +1103,7 @@ const PITCH_LINES = `<svg class="lines" viewBox="0 0 68 100" preserveAspectRatio
   <path d="M27.5 18a8 8 0 0 0 13 0M27.5 82a8 8 0 0 1 13 0"/></svg>`;
 function renderPizarra(){
   pzInit();
-  const T = S.T, dt = isDT();
+  const T = S.T, dt = canBoard();
   const forms = FORMATIONS[T.team.players_on_field] || FORMATIONS[11];
   const used = new Set(PZ.slots.map(s => s.m).filter(Boolean));
   const bench = players().filter(m => !used.has(m.id));
@@ -1221,21 +1234,21 @@ function cardHTML(m, big = false){
     ${m.status !== 'ok' ? `<span class="pc-st">${STATUS[m.status][0]}</span>` : ''}
     <div class="pc-face">${m.number ?? esc(initials(m.name))}</div>
     <div class="pc-name ell">${esc(m.name)}</div>
-    ${big ? `<div class="pc-attrs">${at.map(([k,l]) => `<span>${l.slice(0,3).toUpperCase()} <b>${m.attrs && m.attrs[k] != null ? m.attrs[k] : '–'}</b></span>`).join('')}</div>` : `<div class="pc-sub">${m.role === 'dt' ? 'DT' : m.number != null ? '#' + m.number : ''}${!m.claimed ? ' · sin entrar' : ''}</div>`}
+    ${big ? `<div class="pc-attrs">${at.map(([k,l]) => `<span>${l.slice(0,3).toUpperCase()} <b>${m.attrs && m.attrs[k] != null ? m.attrs[k] : '–'}</b></span>`).join('')}</div>` : `<div class="pc-sub">${m.role === 'dt' || m.role === 'ayudante' ? ROLE[m.role] : m.number != null ? '#' + m.number : ''}${!m.claimed ? ' · sin entrar' : ''}</div>`}
   </div>`;
 }
 function renderPlantel(){
-  const dt = isDT(), all = activeMembers();
+  const dt = isAdmin(), all = activeMembers();
   const pl = all.filter(m => m.plays).sort((a,b) => (b.overall ?? -1) - (a.overall ?? -1) || a.name.localeCompare(b.name));
   const staff = all.filter(m => !m.plays);
   const out = pl.filter(m => m.status !== 'ok');
   const unclaimed = pl.filter(m => !m.claimed).length;
   $('#main').innerHTML = `
     <div class="row between" style="margin-bottom:6px"><h1>Plantel</h1>${dt ? '<button class="btn sm" id="pl-add">＋ Jugador</button>' : ''}</div>
-    <p class="muted small" style="margin-bottom:14px">${plural(pl.length,'jugador','jugadores')}${out.length ? ` · ${out.length} sin poder jugar` : ''}${!S.T.team.ratings_public && !dt ? ' · El puntaje de cada carta lo ve solo su dueño' : ''}</p>
+    <p class="muted small" style="margin-bottom:14px">${plural(pl.length,'jugador','jugadores')}${out.length ? ` · ${out.length} sin poder jugar` : ''}${!S.T.team.ratings_public && !isDT() ? ' · El puntaje de cada carta lo ve solo su dueño' : ''}</p>
     ${dt && unclaimed ? `<div class="banner gold" style="margin-bottom:14px">📲 <span>${plural(unclaimed,'jugador todavía no entró','jugadores todavía no entraron')}. <button class="link" id="pl-inv">Mandar invitación</button></span></div>` : ''}
     <div class="cards">${pl.map(m => `<button data-p="${m.id}" style="display:block;width:100%">${cardHTML(m)}</button>`).join('')}</div>
-    ${staff.length ? `<div class="section"><div class="section-title"><h2>Cuerpo técnico</h2></div><div class="list">${staff.map(m => `<button class="lrow" data-p="${m.id}"><span class="av" style="background:${avColor(m.name)}">${esc(initials(m.name))}</span><span class="t"><b>${esc(m.name)}</b><small>${m.role === 'dt' ? 'DT' : m.role === 'delegado' ? 'Delegado' : 'Staff'}</small></span></button>`).join('')}</div></div>` : ''}
+    ${staff.length ? `<div class="section"><div class="section-title"><h2>Cuerpo técnico</h2></div><div class="list">${staff.map(m => `<button class="lrow" data-p="${m.id}"><span class="av" style="background:${avColor(m.name)}">${esc(initials(m.name))}</span><span class="t"><b>${esc(m.name)}</b><small>${m.role === 'jugador' ? 'Staff' : ROLE[m.role]}</small></span></button>`).join('')}</div></div>` : ''}
     ${dt ? inviteCard() : ''}`;
   $$('[data-p]').forEach(b => b.onclick = () => playerSheet(b.dataset.p));
   const ad = $('#pl-add'); if (ad) ad.onclick = addPlayerSheet;
@@ -1254,7 +1267,7 @@ function addPlayerSheet(){
   };
 }
 function playerSheet(id){
-  const m = member(id), dt = isDT(), self = id === meId(), a = agg(id), sug = dt ? suggested(id) : null;
+  const m = member(id), dt = isDT(), adm = isAdmin(), self = id === meId(), a = agg(id), sug = dt ? suggested(id) : null;
   const hist = playedMatches().map(x => ({ x, s: S.T.stats.find(s => s.match_id === x.id && s.member_id === id) })).filter(o => o.s && o.s.played).reverse();
   const el = openSheet(`
     ${cardHTML(m, true)}
@@ -1269,15 +1282,15 @@ function playerSheet(id){
     ${a.figs || a.yellow || a.red ? `<p class="small muted" style="margin-top:8px;text-align:center">${a.figs ? `⭐ ${plural(a.figs,'vez figura','veces figura')}  ` : ''}${a.yellow ? `🟨 ${a.yellow}  ` : ''}${a.red ? `🟥 ${a.red}` : ''}</p>` : ''}
     ${hist.length ? `<div class="section"><div class="mini" style="margin-bottom:8px">Partido a partido</div><div class="list">${hist.map(({ x, s }) => `<div class="lrow" style="padding:8px 12px"><span class="t"><b>vs ${esc(x.opponent)}</b><small>${s.goals ? `⚽${s.goals} ` : ''}${s.assists ? `🅰️${s.assists} ` : ''}${s.yellow ? '🟨'.repeat(s.yellow) : ''}${s.red ? '🟥' : ''}${s.self_rating != null && (dt || self) ? ` · se puso ${fmt1(+s.self_rating)}` : ''}</small></span>${s.dt_rating != null ? `<span class="rate ${rateCls(+s.dt_rating)}">${fmt1(+s.dt_rating)}</span>` : ''}</div>`).join('')}</div></div>` : ''}
     <div class="section stack">
-      ${dt || self ? `<button class="btn ghost" id="ps-edit">${dt ? '✏️ Editar ficha y puntaje' : '✏️ Editar mi ficha'}</button>` : ''}
-      ${dt || self ? `<button class="btn ghost" id="ps-st">${STATUS[m.status][0]} Cambiar estado</button>` : ''}
+      ${adm || self ? `<button class="btn ghost" id="ps-edit">${dt ? '✏️ Editar ficha y puntaje' : self ? '✏️ Editar mi ficha' : '✏️ Editar ficha'}</button>` : ''}
+      ${adm || self ? `<button class="btn ghost" id="ps-st">${STATUS[m.status][0]} Cambiar estado</button>` : ''}
     </div>`);
   const acc = $('#ps-acc', el); if (acc) acc.onclick = async () => { try { await rpc('fc_member_save', { ...P(), p_team: S.teamId, p_id: id, p: { overall: sug } }); closeSheet(); await refresh(); toast(`${m.name}: ${sug}`); } catch(e){ toast(e.message); } };
   const ed = $('#ps-edit', el); if (ed) ed.onclick = () => { closeSheet(); setTimeout(() => editPlayerSheet(id), 80); };
   const st = $('#ps-st', el); if (st) st.onclick = () => { closeSheet(); setTimeout(() => statusSheet(m), 80); };
 }
 function editPlayerSheet(id){
-  const m = member(id), dt = isDT(), self = id === meId();
+  const m = member(id), dt = isDT(), adm = isAdmin(), self = id === meId();
   let pos = [...(m.positions || [])], foot = m.foot, role = m.role, plays = m.plays;
   const at = () => pos[0] === 'ARQ' ? ATTRS_GK : ATTRS;
   const sug = dt ? suggested(id) : null;
@@ -1293,10 +1306,10 @@ function editPlayerSheet(id){
         <div class="mini" style="margin:10px 0 8px">Atributos</div>
         <div class="attrgrid" id="ep-at"></div>
       </div>
-      <div class="field"><span>Rol</span><div class="seg" id="ep-r">${[['jugador','Jugador'],['dt','DT'],['delegado','Delegado']].map(([k,l]) => `<button type="button" data-k="${k}" class="${role === k ? 'on' : ''}" ${self ? 'disabled' : ''}>${l}</button>`).join('')}</div>${self ? '<div class="hint">Tu propio rol lo cambia otro DT.</div>' : ''}</div>
+      <div class="field"><span>Rol</span><div class="seg" id="ep-r">${[['jugador','Jugador'],['ayudante','Ayudante'],['dt','DT']].map(([k,l]) => `<button type="button" data-k="${k}" class="${role === k ? 'on' : ''}" ${self ? 'disabled' : ''}>${l}</button>`).join('')}</div><div class="hint">${self ? 'Tu propio rol lo cambia otro DT.' : 'El ayudante te da una mano: carga partidos, convocatoria, pizarra y plantel. Los puntajes y los roles quedan para el DT.'}</div></div>
       <div class="field"><span>¿Juega?</span><div class="seg" id="ep-pl"><button type="button" data-v="1" class="${plays ? 'on' : ''}">Sí, está en el plantel</button><button type="button" data-v="0" class="${!plays ? 'on' : ''}">No, solo staff</button></div></div>` : ''}
       <button class="btn" type="submit">Guardar</button>
-      ${dt && !self ? '<button type="button" class="link danger" id="ep-del" style="display:block;margin:6px auto 0">Dar de baja del plantel</button>' : ''}
+      ${adm && !self && (dt || m.role !== 'dt') ? '<button type="button" class="link danger" id="ep-del" style="display:block;margin:6px auto 0">Dar de baja del plantel</button>' : ''}
     </form>`);
   let ovTouched = m.overall != null;
   const drawAttrs = () => { const box = $('#ep-at', el); if (!box) return; const cur = Object.fromEntries($$('input', box).filter(i => i.dataset.set === '1').map(i => [i.dataset.k, i.value])); box.innerHTML = at().map(([k,l]) => { const v = cur[k] ?? (m.attrs && m.attrs[k]) ?? ''; return `<label><span>${l} <b data-o="${k}">${v === '' ? '–' : v}</b></span><input type="range" class="range" data-k="${k}" min="1" max="99" value="${v === '' ? 60 : v}" data-set="${v === '' ? 0 : 1}"></label>`; }).join(''); $$('input', box).forEach(i => i.oninput = () => { i.dataset.set = 1; $(`[data-o="${i.dataset.k}"]`, box).textContent = i.value; }); };
@@ -1426,7 +1439,7 @@ function tablaEquipo(box){
 /* ============ Perfil y ajustes ============ */
 function profileSheet(){
   const dt = isDT(), t = S.T.team, m = member(meId());
-  const el = openSheet(`<div class="row"><span class="av lg" style="background:${avColor(S.me.user.nick)}">${esc(initials(S.me.user.nick))}</span><div><h2>${esc(S.me.user.nick)}</h2><p class="muted small">En ${esc(t.name)}: ${esc(m.name)} · ${dt ? 'DT' : m.role === 'delegado' ? 'Delegado' : 'Jugador'}</p></div></div>
+  const el = openSheet(`<div class="row"><span class="av lg" style="background:${avColor(S.me.user.nick)}">${esc(initials(S.me.user.nick))}</span><div><h2>${esc(S.me.user.nick)}</h2><p class="muted small">En ${esc(t.name)}: ${esc(m.name)} · ${ROLE[m.role]}</p></div></div>
     <div class="stack section">
       ${m.plays ? '<button class="btn ghost" id="pf-card">🃏 Mi carta</button><button class="btn ghost" id="pf-st">' + STATUS[m.status][0] + ' Mi estado: ' + STATUS[m.status][1] + '</button>' : ''}
       ${dt ? '<button class="btn ghost" id="pf-set">⚙️ Ajustes del equipo</button>' : ''}
@@ -1471,7 +1484,7 @@ function settingsSheet(){
       <label class="field"><span>Nombre</span><input class="input" id="st-n" maxlength="40" value="${esc(t.name)}"></label></div>
       <label class="field"><span>Categoría o torneo</span><input class="input" id="st-c" maxlength="40" value="${esc(t.category || '')}" placeholder="Ej: Alto Nono · Primera"></label>
       <div class="field"><span>¿Qué juegan?</span><div class="seg" id="st-f">${FORMATS.map(([n,l]) => `<button type="button" data-n="${n}" class="${n === size ? 'on' : ''}">${l.replace('Fútbol ','F')}</button>`).join('')}</div><div class="hint">Cambia las formaciones de la pizarra.</div></div>
-      <div class="field"><span>¿Quién ve los puntajes del DT?</span><div class="seg" id="st-p"><button type="button" data-v="0" class="${!pub ? 'on' : ''}">Cada uno el suyo</button><button type="button" data-v="1" class="${pub ? 'on' : ''}">Todo el plantel</button></div><div class="hint">Es un tema sensible en un grupo de amigos. Por defecto, cada uno ve solo el suyo.</div></div>
+      <div class="field"><span>¿Quién ve los puntajes del DT?</span><div class="seg" id="st-p"><button type="button" data-v="1" class="${pub ? 'on' : ''}">Todo el plantel</button><button type="button" data-v="0" class="${!pub ? 'on' : ''}">Cada uno el suyo</button></div><div class="hint">Por defecto los ve todo el equipo. Si preferís, cada uno ve solo el suyo.</div></div>
       <button class="btn" type="submit">Guardar</button>
     </form>
     <div class="card section"><b>Códigos de invitación</b><p class="small muted" style="margin:4px 0 10px">Si un código se compartió de más, generá uno nuevo. El viejo deja de funcionar.</p>
