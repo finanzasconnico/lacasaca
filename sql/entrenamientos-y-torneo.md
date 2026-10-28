@@ -31,3 +31,13 @@ Estas partes ya están cargadas en la base (proyecto racha-app). Quedan anotadas
 
 ## Invitaciones por WhatsApp
 - `api/i.js` (Vercel): el link `/i/CODIGO` muestra en WhatsApp el escudo y el nombre del equipo, y después abre la app con el código.
+
+## Avisos al celu (push)
+- `avisos.sql` (ya cargado): `fc_push_subs` guarda los celus de La Casaca, aparte de los de Fueguitos (cada app tiene su service worker). Usa las mismas claves de `push_config`.
+- Función `casaca-push` (en `supabase/functions/casaca-push`): manda los avisos.
+- Qué avisa:
+  - A 2 días del partido, si hay menos confirmados que el mínimo del equipo (por defecto, los de cancha + 3): a los que no respondieron o dudan, y un resumen al DT. Cron `casaca-avisos`, cada hora, solo entre las 9 y las 22.
+  - 2 horas después del partido sin resultado: al que lo dirige.
+  - Con el resultado cargado: a los que jugaron, para que carguen goles, asistencias y tarjetas.
+  - Entrenamiento nuevo: a todo el plantel. Un plan semanal llega como un solo aviso (cron `casaca-avisos-entrenos`, cada minuto).
+  - Alguien hizo el entrenamiento: a los que todavía no lo hicieron. El aviso se reemplaza en el celu, no se acumula.

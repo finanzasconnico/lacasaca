@@ -590,6 +590,10 @@ async function boot(){
   const q = new URLSearchParams(location.search);
   if (q.get('e')) S.pendingJoin = q.get('e').toUpperCase();
   if (TABS.some(t => t[0] === q.get('tab')) || q.get('tab') === 'pizarra') S.tab = q.get('tab');
+  // Links de los avisos: ?team=…&m=partido o &t=entrenamiento
+  if (q.get('team')) S.teamId = q.get('team');
+  if (q.get('m')){ S.tab = 'partidos'; S.matchId = q.get('m'); }
+  if (q.get('t')){ S.tab = 'entrenos'; S.trainId = q.get('t'); }
   if (q.toString()) history.replaceState(null, '', location.pathname);
   if (!S.token){ renderWelcome(); return; }
   try { await loadMe(); }
@@ -604,6 +608,7 @@ async function boot(){
 async function afterLogin(){
   if (S.pendingJoin){ const code = S.pendingJoin; S.pendingJoin = null; await joinFlow(code); return; }
   try { await loadTeam(); } catch(e){ renderOffline(e.message); return; }
+  await pushCheck();
   render();
 }
 function renderOffline(msg){
@@ -807,14 +812,14 @@ function render(){
       <button class="av" id="me-av" style="background:${avColor(S.me.user.nick)}" aria-label="Mi perfil">${esc(initials(meM ? meM.name : S.me.user.nick))}</button>
     </div></div>
     <main class="wrap" id="main"></main>
-    <nav class="tabs" aria-label="Secciones"><div class="inner">${(isPicadito() ? TABS_PK : TABS).map(([k,l]) => { const on = S.tab === k || (k === 'partidos' && S.tab === 'pizarra'); return `<button data-tab="${k}" class="${on ? 'on' : ''}" aria-current="${on ? 'page' : 'false'}">${ICONS[k]}${l}</button>`; }).join('')}</div></nav>`;
+    <nav class="tabs" aria-label="Secciones"><div class="inner">${(isPicadito() ? TABS_PK : TABS).map(([k,l]) => { const on = S.tab === k || (k === 'plantel' && S.tab === 'pizarra'); return `<button data-tab="${k}" class="${on ? 'on' : ''}" aria-current="${on ? 'page' : 'false'}">${ICONS[k]}${l}</button>`; }).join('')}</div></nav>`;
   $('#teamsel').onclick = teamsSheet;
   $('#me-av').onclick = profileSheet;
   $$('nav.tabs button').forEach(b => b.onclick = () => { S.tab = b.dataset.tab; S.matchId = null; S.trainId = null; S.pickId = null; render(); scrollTo(0,0); });
   if (isPicadito() && S.tab === 'pizarra') S.tab = 'partidos';
   (isPicadito() ? { inicio: renderHoy, partidos: renderFechas, entrenos: renderEntrenos, plantel: renderPlantel, tabla: renderTablaPicadito }
     : { inicio: renderInicio, partidos: renderPartidos, pizarra: renderPizarra, entrenos: renderEntrenos, plantel: renderPlantel, tabla: renderTabla })[S.tab]();
-  const pb = $('#pz-back'); if (pb) pb.onclick = () => { S.tab = 'partidos'; render(); scrollTo(0,0); };
+  $$('[data-plseg]').forEach(b => b.onclick = () => { S.tab = b.dataset.plseg; render(); scrollTo(0,0); });
 }
 function renderNoTeam(){
   $('#app').innerHTML = `<div class="welcome">
@@ -873,6 +878,17 @@ function callupCounts(x){
   const pending = players().filter(m => m.claimed && !cs.some(c => c.member_id === m.id));
   return { voy, duda, no, pending };
 }
+// Después del partido: al que lo dirige le pide el resultado y después los puntajes.
+function postMatchHTML(){
+  const now = Date.now(), items = [];
+  S.T.matches.filter(x => canMatch(x) && !x.played && x.starts_at && now - new Date(x.starts_at) > 100 * 6e4 && now - new Date(x.starts_at) < 10 * 864e5)
+    .forEach(x => items.push(`<button class="lrow" data-post="res:${x.id}"><span style="font-size:26px">🏁</span><span class="t"><b>¿Cómo salió vs ${esc(x.opponent)}?</b><small>Cargá el resultado: después cada uno carga sus goles, asistencias y tarjetas</small></span><span class="pill gold">Cargar</span></button>`));
+  playedMatches().filter(x => canRate(x) && x.result_at && now - new Date(x.result_at) < 7 * 864e5).forEach(x => {
+    const st = S.T.stats.filter(s => s.match_id === x.id && s.played), sin = st.filter(s => s.dt_rating == null).length;
+    if (!st.length || sin) items.push(`<button class="lrow" data-post="rate:${x.id}"><span style="font-size:26px">⭐</span><span class="t"><b>Puntuá vs ${esc(x.opponent)}</b><small>${st.length ? `Te faltan ${plural(sin, 'jugador', 'jugadores')}` : 'Marcá quiénes jugaron y poneles puntaje'} · goles, asistencias y tarjetas también</small></span><span class="pill sky">Puntuar</span></button>`);
+  });
+  return items.length ? `<div class="section"><div class="section-title"><h2>Después del partido</h2></div><div class="list">${items.join('')}</div></div>` : '';
+}
 function renderInicio(){
   const T = S.T, m = member(meId()), nx = nextMatch();
   const mine = nx && T.callups.find(c => c.match_id === nx.id && c.member_id === meId());
@@ -892,9 +908,12 @@ function renderInicio(){
       ${nx.dt_member === meId() && !isDT() ? `<div class="count" style="margin-top:8px">📋 Este partido lo dirigís vos: armás la convocatoria, la pizarra y el resultado.</div>` : ''}
       ${m && m.plays ? `<div style="margin-top:14px">${rsvpButtons(nx, mine && mine.answer)}</div>` : ''}
       <div class="count">👍 ${cnt.voy} van · 🤔 ${cnt.duda} dudan · 🙅 ${cnt.no} no van${cnt.pending.length ? ` · ${cnt.pending.length} sin responder` : ''}</div>
-      <div class="row" style="gap:18px;margin-top:10px"><button class="link" id="nx-open" style="color:#fff;text-decoration:underline">Ver convocatoria</button>${lgMatchOf(nx) ? '<button class="link" id="nx-rv" style="color:#fff;text-decoration:underline">🔎 Informe del rival</button>' : ''}</div>
+      ${canBoard() ? `<button class="btn sm" id="nx-pz" style="margin-top:12px;background:#fff;color:var(--grass-ink);box-shadow:0 3px 0 rgba(0,0,0,.18)">📋 Armar la pizarra</button>` : ''}
+      <div class="row" style="gap:18px;margin-top:10px;flex-wrap:wrap"><button class="link" id="nx-open" style="color:#fff;text-decoration:underline">Ver convocatoria</button>${lgMatchOf(nx) ? '<button class="link" id="nx-rv" style="color:#fff;text-decoration:underline">🔎 Informe del rival</button>' : ''}</div>
     </div>` : `<div class="card empty"><div class="big">🗓️</div><h3>No hay partidos en agenda</h3><p class="muted small" style="margin-top:4px">${isAdmin() ? 'Cargá el próximo y el plantel confirma desde acá.' : 'Cuando el DT cargue el próximo, confirmás desde acá.'}</p>${isAdmin() ? '<button class="btn sm" id="nx-new" style="margin-top:12px">＋ Cargar partido</button>' : ''}</div>`}
 
+    ${postMatchHTML()}
+    ${pushCardHTML()}
     ${teamForm().length ? `<div class="card section row between" style="padding:12px 16px"><span><b style="display:block">Últimos ${teamForm().length}</b><span class="mini">${esc(S.T.team.name)}${LG() && LG().standings.find(s => isUs(s.id)) ? ` · ${LG().standings.find(s => isUs(s.id)).pos}º en la tabla` : ''}</span></span>${formDots(teamForm(), true)}</div>` : ''}
 
     ${trainPendingForMe().length ? `<div class="section"><div class="section-title"><h2>Entrenamiento pendiente</h2><button class="link" id="go-tr">Ver todos</button></div><div class="list">${trainPendingForMe().slice(0, 2).map(trainCard).join('')}</div></div>` : ''}
@@ -915,6 +934,8 @@ function renderInicio(){
     ${isAdmin() && missingPlayers().length >= Math.max(2, players().length / 3) ? inviteCard() : ''}`;
   bindRsvp($('#main'));
   const o = $('#nx-open'); if (o) o.onclick = () => openMatch(nx.id);
+  const npz = $('#nx-pz'); if (npz) npz.onclick = () => { S.tab = 'pizarra'; render(); scrollTo(0,0); };
+  $$('[data-post]').forEach(b => b.onclick = () => { const [k, id] = b.dataset.post.split(':'); k === 'res' ? resultSheet(id) : rateSheet(id); });
   const nr = $('#nx-rv'); if (nr) nr.onclick = () => { const lm = lgMatchOf(nx); rivalSheet(isUs(lm.home_id) ? lm.away_id : lm.home_id); };
   const nn = $('#nx-new'); if (nn) nn.onclick = () => matchEditSheet(null);
   const sf = $('#st-fix'); if (sf) sf.onclick = () => statusSheet(m);
@@ -926,6 +947,7 @@ function renderInicio(){
   const gt = $('#go-tr'); if (gt) gt.onclick = () => { S.tab = 'entrenos'; render(); scrollTo(0,0); };
   bindMatchCards($('#main'));
   bindInvite($('#main'));
+  bindPushCard($('#main'));
 }
 function closesIn(x){ const h = Math.max(1, Math.round((new Date(x.result_at).getTime() + 48*36e5 - Date.now()) / 36e5)); return h === 1 ? 'en menos de 1 h' : `en ${h} h`; }
 // /i/CODIGO muestra el nombre del equipo en la vista previa de WhatsApp (api/i.js) y abre la app con el código.
@@ -1251,11 +1273,11 @@ function renderPizarra(){
   const bench = players().filter(m => !used.has(m.id));
   const myNote = PZ.notes[meId()];
   if (!dt && !T.lineups.length){
-    $('#main').innerHTML = `<button class="back" id="pz-back">← Partidos</button><h1 style="margin-bottom:14px">Pizarra</h1><div class="card empty"><div class="big">📋</div><h3>Todavía no hay equipo armado</h3><p class="muted small">Cuando el DT arme la formación, la ves acá.</p></div>`;
+    $('#main').innerHTML = `${plSeg('pizarra')}<h1 style="margin-bottom:14px">Pizarra</h1><div class="card empty"><div class="big">📋</div><h3>Todavía no hay equipo armado</h3><p class="muted small">Cuando el DT arme la formación, la ves acá.</p></div>`;
     return;
   }
   $('#main').innerHTML = `
-    <button class="back" id="pz-back">← Partidos</button><div class="row between" style="margin-bottom:10px"><h1>Pizarra</h1><button class="btn ghost sm" id="pz-img">📤 Compartir</button></div>
+    ${plSeg('pizarra')}<div class="row between" style="margin-bottom:10px"><h1>Pizarra</h1><button class="btn ghost sm" id="pz-img">📤 Compartir</button></div>
     ${dt && T.lineups.length ? `<div class="chips scroll" style="margin-bottom:10px">${T.lineups.map(l => `<button class="chip ${l.id === PZ.id ? 'on' : ''}" data-l="${l.id}">${esc(l.name)}</button>`).join('')}<button class="chip" id="pz-new">＋ Nuevo</button></div>` : ''}
     ${!dt ? `<p class="muted small" style="margin:-4px 0 10px">${esc(PZ.name)} · ${PZ.formation}</p>` : ''}
     ${myNote ? `<div class="banner sky" style="margin-bottom:10px">📌 <span><b>Indicación para vos:</b> ${esc(myNote)}</span></div>` : ''}
@@ -2017,6 +2039,8 @@ function cardHTML(m, big = false){
     ${big ? `<div class="pc-attrs">${at.map(([k,l]) => `<span>${l.slice(0,3).toUpperCase()} <b>${m.attrs && m.attrs[k] != null ? m.attrs[k] : '–'}</b></span>`).join('')}</div>` : `<div class="pc-sub">${m.role === 'dt' || m.role === 'ayudante' ? ROLE[m.role] : m.number != null ? '#' + m.number : ''}${!m.claimed ? ' · sin entrar' : ''}</div>`}
   </div>`;
 }
+// Plantel y pizarra van juntos: la pizarra es la herramienta principal del DT.
+function plSeg(on){ return `<div class="seg" style="margin-bottom:16px"><button data-plseg="plantel" class="${on === 'plantel' ? 'on' : ''}">👥 Jugadores</button><button data-plseg="pizarra" class="${on === 'pizarra' ? 'on' : ''}">📋 Pizarra</button></div>`; }
 function renderPlantel(){
   const dt = isAdmin(), all = activeMembers();
   const pl = all.filter(m => m.plays && !m.guest).sort((a,b) => (b.overall ?? -1) - (a.overall ?? -1) || a.name.localeCompare(b.name));
@@ -2025,6 +2049,7 @@ function renderPlantel(){
   const out = pl.filter(m => m.status !== 'ok');
   const unclaimed = pl.filter(m => !m.claimed).length;
   $('#main').innerHTML = `
+    ${isPicadito() ? '' : plSeg('plantel')}
     <div class="row between" style="margin-bottom:6px"><h1>Plantel</h1>${dt ? '<button class="btn sm" id="pl-add">＋ Jugador</button>' : ''}</div>
     <p class="muted small" style="margin-bottom:14px">${plural(pl.length,'jugador','jugadores')}${out.length ? ` · ${out.length} sin poder jugar` : ''}${!S.T.team.ratings_public && !isDT() ? ' · El puntaje de cada carta lo ve solo su dueño' : ''}</p>
     ${dt && unclaimed ? `<div class="banner gold" style="margin-bottom:14px">📲 <span>${plural(unclaimed,'jugador todavía no entró','jugadores todavía no entraron')}. <button class="link" id="pl-inv">Mandar invitación</button></span></div>` : ''}
@@ -2786,6 +2811,52 @@ function renderTablaPicadito(){
   $$('[data-p]').forEach(b => b.onclick = () => playerSheet(b.dataset.p));
 }
 
+/* ============ Avisos al celu ============ */
+// Notificaciones push: convocatoria corta a 2 días, entrenamientos del DT, quién ya entrenó y cargar el partido.
+const VAPID = 'BNI5NZVkLJbDX8l1e32yE__SU_NzbJMWF0tBVc5eAoB7K0VU84HXuraEqiGI37FrwWz8tzD9_jNg1-YRJwjHeoE';
+const pushOK = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+const isIOS = /iP(hone|ad|od)/.test(navigator.userAgent);
+const standalone = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+const b64u = (x) => Uint8Array.from(atob((x + '='.repeat((4 - x.length % 4) % 4)).replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0));
+async function pushSub(){ const reg = await navigator.serviceWorker.getRegistration(); return reg && reg.pushManager.getSubscription(); }
+async function pushState(){
+  if (!pushOK()) return isIOS && !standalone() ? 'ios' : 'no';
+  if (Notification.permission === 'denied') return 'denied';
+  try { return Notification.permission === 'granted' && await pushSub() ? 'on' : 'off'; } catch(e){ return 'off'; }
+}
+const pushSave = (sub) => { const j = sub.toJSON(); return rpc('fc_push_subscribe', { ...P(), p_endpoint: j.endpoint, p_p256dh: j.keys.p256dh, p_auth: j.keys.auth }); };
+// Al entrar: averigua el estado y, si ya estaba activado, vuelve a anotar el celu a esta cuenta.
+async function pushCheck(){
+  S.push = await pushState();
+  if (S.push === 'on') pushSub().then(s => s && pushSave(s)).catch(() => {});
+}
+async function pushEnable(){
+  try {
+    if (await Notification.requestPermission() !== 'granted'){ S.push = await pushState(); toast('Sin permiso no te puede avisar. Activalo en los ajustes del celu.', 4000); render(); return; }
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.getSubscription() || await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64u(VAPID) });
+    await pushSave(sub);
+    S.push = 'on'; toast('🔔 Listo: te va a llegar un aviso de prueba');
+    fetch(`${SB_URL}/functions/v1/casaca-push`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ test_token: S.token }) }).catch(() => {});
+  } catch(e){ toast('No se pudieron activar los avisos en este celu.', 3500); }
+  render();
+}
+async function pushDisable(){
+  try { const sub = await pushSub(); if (sub){ await rpc('fc_push_unsubscribe', { ...P(), p_endpoint: sub.endpoint }).catch(() => {}); await sub.unsubscribe(); } } catch(e){}
+  S.push = 'off'; toast('Avisos apagados'); render();
+}
+function pushCardHTML(){
+  if (LS.get('casaca_push_no') || !['off', 'ios'].includes(S.push)) return '';
+  return S.push === 'ios'
+    ? `<div class="card section"><h3>📲 Instalá la app para recibir avisos</h3><p class="muted small" style="margin:4px 0 10px">En iPhone los avisos llegan solo con la app instalada: tocá <b>Compartir</b> ⬆️ abajo y después <b>Agregar a inicio</b>. Abrila desde ese ícono y activá los avisos.</p><button class="link muted" id="ps-no">Entendido</button></div>`
+    : `<div class="card section" style="border-color:var(--grass)"><h3>🔔 Activá los avisos</h3><p class="muted small" style="margin:4px 0 12px">Te avisa cuando faltan jugadores para el partido, cuando el DT manda un entrenamiento, cuando alguien ya lo hizo y cuando hay que cargar el partido.</p>
+      <div class="grid2"><button class="btn sm" style="width:100%" id="ps-on">Activar</button><button class="btn ghost sm" style="width:100%" id="ps-no">Ahora no</button></div></div>`;
+}
+function bindPushCard(root){
+  const on = $('#ps-on', root); if (on) on.onclick = pushEnable;
+  const no = $('#ps-no', root); if (no) no.onclick = () => { LS.set('casaca_push_no', '1'); render(); };
+}
+
 /* ============ Perfil y ajustes ============ */
 function profileSheet(){
   const dt = isDT(), t = S.T.team, m = member(meId());
@@ -2794,6 +2865,7 @@ function profileSheet(){
       ${m.plays ? '<button class="btn ghost" id="pf-card">🃏 Mi carta</button><button class="btn ghost" id="pf-st">' + STATUS[m.status][0] + ' Mi estado: ' + STATUS[m.status][1] + '</button>' : ''}
       ${dt ? '<button class="btn ghost" id="pf-set">⚙️ Ajustes del equipo</button>' : ''}
       <button class="btn ghost" id="pf-inv">📲 Invitar al equipo</button>
+      ${S.push === 'on' ? '<button class="btn ghost" id="pf-push">🔔 Avisos activados · apagar</button>' : S.push === 'off' ? '<button class="btn ghost" id="pf-push">🔕 Activar avisos al celu</button>' : S.push === 'ios' ? '<p class="small muted">📲 Para recibir avisos en iPhone, instalá la app: Compartir ⬆️ → Agregar a inicio.</p>' : S.push === 'denied' ? '<p class="small muted">🔕 Los avisos están bloqueados para esta página. Se activan desde los ajustes del navegador.</p>' : ''}
       ${!S.me.user.has_pin ? '<button class="btn" id="pf-pin">🔒 Crear PIN para entrar desde otro celu</button>' : ''}
     </div>
     <div class="card section small"><b>🔥 ¿Usás Fueguitos?</b><p class="muted" style="margin-top:4px">Es la misma cuenta. Anotá ahí el entrenamiento invisible (dormir, hidratarte, entrenar) y mantené la racha con el grupo.</p><a class="link" href="https://fueguitos.vercel.app/" target="_blank" rel="noopener" style="display:inline-block;margin-top:6px">Abrir Fueguitos</a></div>
@@ -2803,6 +2875,7 @@ function profileSheet(){
   on('#pf-st', () => statusSheet(m));
   on('#pf-set', settingsSheet);
   on('#pf-inv', inviteSheet);
+  on('#pf-push', () => S.push === 'on' ? pushDisable() : pushEnable());
   on('#pf-pin', pinSheet);
   on('#pf-leave', () => confirmSheet(`¿Salir de ${esc(t.name)}?`, 'Tu ficha y tus estadísticas quedan en el equipo, sin dueño. Podés volver con el código.', 'Salir', async () => {
     try { await rpc('fc_leave', { ...P(), p_team: S.teamId }); closeSheet(); S.teamId = null; await loadMe(); await loadTeam(); render(); } catch(e){ toast(e.message, 3500); }
@@ -2848,6 +2921,7 @@ function settingsSheet(){
       </div>
       <label class="field"><span>Categoría o torneo</span><input class="input" id="st-c" maxlength="40" value="${esc(t.category || '')}" placeholder="Ej: Alto Nono · Primera"></label>
       <div class="field"><span>¿Qué juegan?</span><div class="seg" id="st-f">${FORMATS.map(([n,l]) => `<button type="button" data-n="${n}" class="${n === size ? 'on' : ''}">${l.replace('Fútbol ','F')}</button>`).join('')}</div><div class="hint">Cambia las formaciones de la pizarra.</div></div>
+      <div class="field" id="st-minf" ${kind === 'amistosos' ? 'hidden' : ''}><span>Mínimo de confirmados</span><div class="row" style="gap:12px;align-items:center">${stepperHTML('st-min', t.min_players ?? (t.players_on_field + 3), 'confirmados')}<span class="small muted">A 2 días del partido, si hay menos, la app les avisa a los que no respondieron.</span></div></div>
       <div class="field"><span>¿Quién arma las cartas?</span><div class="seg" id="st-cm">${[['dt','Solo el DT'],['staff','DT y ayudantes'],['self','Cada uno la suya']].map(([k,l]) => `<button type="button" data-k="${k}" class="${cardMode() === k ? 'on' : ''}">${l}</button>`).join('')}</div><div class="hint">Si cada uno arma la suya, el DT igual las ve y las puede corregir.</div></div>
       <div class="field"><span>¿Quién ve los puntajes del DT?</span><div class="seg" id="st-p"><button type="button" data-v="1" class="${pub ? 'on' : ''}">Todo el plantel</button><button type="button" data-v="0" class="${!pub ? 'on' : ''}">Cada uno el suyo</button></div><div class="hint">Por defecto los ve todo el equipo. Si preferís, cada uno ve solo el suyo.</div></div>
       <button class="btn" type="submit">Guardar</button>
@@ -2857,13 +2931,14 @@ function settingsSheet(){
     <button class="btn ghost section" id="st-lg">🏆 ${S.LG ? 'Torneo conectado: ' + esc(S.LG.torneo_name || S.LG.site) : 'Conectar el torneo oficial'}</button>`);
   $('#st-lg', el).onclick = () => { closeSheet(); setTimeout(leagueSetSheet, 80); };
   $$('#st-f button', el).forEach(b => b.onclick = () => { size = +b.dataset.n; $$('#st-f button', el).forEach(x => x.classList.toggle('on', x === b)); });
-  $$('#st-k button', el).forEach(b => b.onclick = () => { kind = b.dataset.k; $$('#st-k button', el).forEach(x => x.classList.toggle('on', x === b)); $('#st-am', el).hidden = kind !== 'amistosos'; });
+  bindSteppers(el, { 'st-min': [5, 30, 1] });
+  $$('#st-k button', el).forEach(b => b.onclick = () => { kind = b.dataset.k; $$('#st-k button', el).forEach(x => x.classList.toggle('on', x === b)); $('#st-am', el).hidden = kind !== 'amistosos'; $('#st-minf', el).hidden = kind === 'amistosos'; });
   $$('#st-d .chip', el).forEach(b => b.onclick = () => { day = +b.dataset.d; $$('#st-d .chip', el).forEach(x => x.classList.toggle('on', x === b)); });
   let cm = cardMode();
   $$('#st-cm button', el).forEach(b => b.onclick = () => { cm = b.dataset.k; $$('#st-cm button', el).forEach(x => x.classList.toggle('on', x === b)); });
   $$('#st-p button', el).forEach(b => b.onclick = () => { pub = b.dataset.v === '1'; $$('#st-p button', el).forEach(x => x.classList.toggle('on', x === b)); });
   const save = async (p, msg) => { try { await rpc('fc_team_settings', { ...P(), p_team: S.teamId, p }); closeSheet(); await loadMe(); await refresh(); toast(msg); } catch(e){ toast(e.message); } };
-  $('#st', el).onsubmit = (e) => { e.preventDefault(); if (size !== t.players_on_field) PZ = null; save({ name: $('#st-n', el).value.trim(), emoji: $('#st-e', el).value.trim(), category: $('#st-c', el).value.trim(), players_on_field: size, ratings_public: pub, card_mode: cm,
+  $('#st', el).onsubmit = (e) => { e.preventDefault(); if (size !== t.players_on_field) PZ = null; save({ name: $('#st-n', el).value.trim(), emoji: $('#st-e', el).value.trim(), category: $('#st-c', el).value.trim(), players_on_field: size, ratings_public: pub, card_mode: cm, min_players: stepVal(el, 'st-min'),
     kind, ...(kind === 'amistosos' ? { place: $('#st-pl', el).value.trim(), place_url: $('#st-pu', el).value.trim(), usual_day: day, usual_time: $('#st-h', el).value, usual_size: $('#st-cu', el).value, price: $('#st-pr', el).value, alias: $('#st-al', el).value.trim() } : {}) }, 'Ajustes guardados'); };
   $('#st-nc', el).onclick = () => save({ new_code: true }, 'Código de jugadores nuevo');
   $('#st-nd', el).onclick = () => save({ new_dt_code: true }, 'Código de DT nuevo');
