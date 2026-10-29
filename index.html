@@ -248,6 +248,12 @@ table.pl td.me{font-weight:800}
 .tok.hurt .dot{background:var(--coral);color:#fff}
 .tok .nm{font-size:12px;font-weight:800;color:#fff;background:rgba(0,0,0,.45);padding:1px 6px;border-radius:6px;max-width:76px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tok.drag{z-index:5}
+.tok.c-voy .dot{background:#1FA84F;color:#fff}.tok.c-no .dot{background:#E5484D;color:#fff}.tok.c-duda .dot{background:#F5A524;color:#2a1a00}.tok.c-none .dot{background:#C9D3CC;color:#33433a}
+i.lg{display:inline-block;width:11px;height:11px;border-radius:50%;margin-right:5px;vertical-align:-1px}i.lg.c-voy{background:#1FA84F}i.lg.c-no{background:#E5484D}i.lg.c-duda{background:#F5A524}i.lg.c-none{background:#C9D3CC}
+.pill.c-voy{background:#DDF5E4;color:#0d5a28}.pill.c-no{background:#FDE2E2;color:#8f1d20}.pill.c-duda{background:#FFF0D1;color:#6b4300}.pill.c-none{background:var(--line);color:var(--ink)}
+.gate{min-height:calc(100vh - 210px);display:flex;flex-direction:column;justify-content:center;text-align:center}
+.gate .when{font-family:var(--f-num);font-weight:900;font-size:34px;line-height:1.05;margin:10px 0 4px}
+.gate .rsvp{margin-top:22px}
 .pitch.sug{outline:3px dashed var(--sky,#2b7de9);outline-offset:3px}
 @media (min-width:900px){.wrap.pz{max-width:1000px}.pzgrid{display:grid;grid-template-columns:minmax(0,1fr) 380px;gap:28px;align-items:start}.pzgrid>aside{position:sticky;top:76px;max-height:calc(100vh - 100px);overflow:auto}.pzgrid>aside>.section:first-child{margin-top:0}}
 .pitch.ro .tok{touch-action:pan-y pinch-zoom}
@@ -893,9 +899,45 @@ function postMatchHTML(){
   });
   return items.length ? `<div class="section"><div class="section-title"><h2>Después del partido</h2></div><div class="list">${items.join('')}</div></div>` : '';
 }
+// Lo primero que ve el jugador cuando hay partido y no respondió: ¿vas a estar?
+function gateHTML(nx){
+  const d = nx.starts_at && new Date(nx.starts_at);
+  const day = d ? d.toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'short' }) : '';
+  const cnt = callupCounts(nx);
+  return `<div class="gate"><div style="font-size:54px">${esc(S.T.team.emoji)}</div>
+    <div class="mini" style="margin-top:10px">${esc(nx.fecha_label || (nx.kind === 'amistoso' ? 'Amistoso' : 'Próximo partido'))}</div>
+    <h1 style="font-size:30px;margin-top:6px">¿Vas a estar?</h1>
+    ${d ? `<div class="when">${esc(day.charAt(0).toUpperCase() + day.slice(1))}<br>${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')} h</div>` : ''}
+    <p style="font-size:20px;font-weight:800">vs ${esc(nx.opponent)}</p>
+    ${nx.venue ? `<p class="muted">📍 ${esc(nx.venue)}</p>` : ''}
+    ${rsvpButtons(nx, null)}
+    <p class="small muted" style="margin-top:14px">👍 ${cnt.voy} ya confirmaron${cnt.voy < (S.T.team.min_players ?? S.T.team.players_on_field + 3) ? ` · hacen falta ${S.T.team.min_players ?? S.T.team.players_on_field + 3}` : ''}</p>
+    <button class="link muted" id="gate-later" style="margin:18px auto 0">Responder después</button></div>`;
+}
+// La pizarra del próximo partido en Inicio, con cada uno pintado según confirmó
+function boardHomeHTML(nx){
+  const L = S.T.lineups[0];
+  if (!L) return canBoard() ? `<div class="card section row between" style="padding:14px 16px"><span><b style="display:block">📋 La pizarra</b><span class="small muted">Armala y cada jugador aparece en verde si confirmó o en rojo si no va.</span></span><button class="btn sm" id="hb-open">Armar</button></div>` : '';
+  const map = rsvpMap(nx), on = L.slots.map(s => s.m).filter(Boolean);
+  const out = on.filter(id => map[id] === 'no_voy' || (member(id) && member(id).status !== 'ok')).length;
+  const bench = players().filter(m => !on.includes(m.id)).sort((a,b) => ({ voy: 0, duda: 1 }[map[a.id]] ?? 2) - ({ voy: 0, duda: 1 }[map[b.id]] ?? 2));
+  return `<div class="section"><div class="section-title"><h2>📋 ${esc(L.name)} · ${esc(L.formation)}</h2><button class="link" id="hb-open">${canBoard() ? 'Editar' : 'Ver'}</button></div>
+    ${rsvpLegend(map, on)}
+    ${canBoard() && out ? `<div class="banner coral" style="margin:6px 0">⚠️ <span>${plural(out, 'titular no va', 'titulares no van')} o no ${out > 1 ? 'pueden' : 'puede'}. Tocá la pizarra para cambiarlo.</span></div>` : ''}
+    <div class="pitch ro" id="hb-pitch" role="button" tabindex="0" style="margin-top:6px;cursor:pointer" aria-label="Abrir la pizarra">${PITCH_LINES}${L.slots.map((s, i) => tokHTML(s, i, {}, map)).join('')}</div>
+    ${bench.length ? `<div class="mini" style="margin:10px 0 6px">SUPLENTES</div><div class="bench">${bench.map(m => `<span class="pill ${rsvpCls(map, m.id)}">${m.number != null ? `<b>${m.number}</b> ` : ''}${esc(m.name)}</span>`).join('')}</div>` : ''}
+  </div>`;
+}
 function renderInicio(){
   const T = S.T, m = member(meId()), nx = nextMatch();
   const mine = nx && T.callups.find(c => c.match_id === nx.id && c.member_id === meId());
+  S.gateLater = S.gateLater || {};
+  if (nx && nx.starts_at && m && m.plays && !mine && !S.gateLater[nx.id]){
+    $('#main').innerHTML = gateHTML(nx);
+    bindRsvp($('#main'));
+    $('#gate-later').onclick = () => { S.gateLater[nx.id] = true; renderInicio(); };
+    return;
+  }
   const a = agg(meId());
   const pend = playedMatches().filter(x => !T.stats.some(s => s.match_id === x.id && s.member_id === meId())).slice(-3).reverse();
   const toVote = playedMatches().filter(x => votingOpen(x) && T.stats.some(s => s.match_id === x.id && s.member_id === meId() && s.played) && !T.votes.some(v => v.match_id === x.id && v.mine));
@@ -912,10 +954,10 @@ function renderInicio(){
       ${nx.dt_member === meId() && !isDT() ? `<div class="count" style="margin-top:8px">📋 Este partido lo dirigís vos: armás la convocatoria, la pizarra y el resultado.</div>` : ''}
       ${m && m.plays ? `<div style="margin-top:14px">${rsvpButtons(nx, mine && mine.answer)}</div>` : ''}
       <div class="count">👍 ${cnt.voy} van · 🤔 ${cnt.duda} dudan · 🙅 ${cnt.no} no van${cnt.pending.length ? ` · ${cnt.pending.length} sin responder` : ''}</div>
-      ${canBoard() ? `<button class="btn sm" id="nx-pz" style="margin-top:12px;background:#fff;color:var(--grass-ink);box-shadow:0 3px 0 rgba(0,0,0,.18)">📋 Armar la pizarra</button>` : ''}
       <div class="row" style="gap:18px;margin-top:10px;flex-wrap:wrap"><button class="link" id="nx-open" style="color:#fff;text-decoration:underline">Ver convocatoria</button>${lgMatchOf(nx) ? '<button class="link" id="nx-rv" style="color:#fff;text-decoration:underline">🔎 Informe del rival</button>' : ''}</div>
     </div>` : `<div class="card empty"><div class="big">🗓️</div><h3>No hay partidos en agenda</h3><p class="muted small" style="margin-top:4px">${isAdmin() ? 'Cargá el próximo y el plantel confirma desde acá.' : 'Cuando el DT cargue el próximo, confirmás desde acá.'}</p>${isAdmin() ? '<button class="btn sm" id="nx-new" style="margin-top:12px">＋ Cargar partido</button>' : ''}</div>`}
 
+    ${nx && !isPicadito() ? boardHomeHTML(nx) : ''}
     ${postMatchHTML()}
     ${pushCardHTML()}
     ${teamForm().length ? `<div class="card section row between" style="padding:12px 16px"><span><b style="display:block">Últimos ${teamForm().length}</b><span class="mini">${esc(S.T.team.name)}${LG() && LG().standings.find(s => isUs(s.id)) ? ` · ${LG().standings.find(s => isUs(s.id)).pos}º en la tabla` : ''}</span></span>${formDots(teamForm(), true)}</div>` : ''}
@@ -938,6 +980,7 @@ function renderInicio(){
     ${isAdmin() && missingPlayers().length >= Math.max(2, players().length / 3) ? inviteCard() : ''}`;
   bindRsvp($('#main'));
   const o = $('#nx-open'); if (o) o.onclick = () => openMatch(nx.id);
+  $$('#hb-open, #hb-pitch').forEach(b => b.onclick = () => { S.tab = 'pizarra'; render(); scrollTo(0,0); });
   const npz = $('#nx-pz'); if (npz) npz.onclick = () => { S.tab = 'pizarra'; render(); scrollTo(0,0); };
   $$('[data-post]').forEach(b => b.onclick = () => { const [k, id] = b.dataset.post.split(':'); k === 'res' ? resultSheet(id) : rateSheet(id); });
   const nr = $('#nx-rv'); if (nr) nr.onclick = () => { const lm = lgMatchOf(nx); rivalSheet(isUs(lm.home_id) ? lm.away_id : lm.home_id); };
@@ -1274,9 +1317,17 @@ const PITCH_LINES = `<svg class="lines" viewBox="0 0 68 100" preserveAspectRatio
 const canSuggest = () => !canBoard() && S.T.team.board_suggest !== false;
 const tips = () => S.TIPS || [];
 const tipSlots = (slots) => slots.map(s => ({ x: s.x, y: s.y, gk: !!s.gk, m: s.m || null }));
-function tokHTML(s, i, notes = {}){
+// Cómo respondió cada uno la convocatoria del próximo partido: verde va, amarillo duda, rojo no va, gris sin responder.
+const RSVP_CLS = { voy: 'c-voy', duda: 'c-duda', no_voy: 'c-no' };
+function rsvpMap(x){ const o = {}; if (x) S.T.callups.filter(c => c.match_id === x.id).forEach(c => o[c.member_id] = c.answer); return o; }
+const rsvpCls = (map, id) => map ? (RSVP_CLS[map[id]] || 'c-none') : '';
+function rsvpLegend(map, ids){
+  const n = (a) => ids.filter(id => (map[id] || null) === a).length;
+  return `<div class="row tiny" style="gap:12px;flex-wrap:wrap;margin:8px 0 2px;font-weight:700"><span><i class="lg c-voy"></i>Va ${n('voy')}</span><span><i class="lg c-duda"></i>Duda ${n('duda')}</span><span><i class="lg c-no"></i>No va ${n('no_voy')}</span><span><i class="lg c-none"></i>Sin responder ${n(null)}</span></div>`;
+}
+function tokHTML(s, i, notes = {}, map = null){
   const m = s.m && member(s.m);
-  const cls = ['tok', s.gk ? 'gk' : '', !m ? 'empty' : '', m && m.status !== 'ok' ? 'hurt' : '', m && notes[m.id] ? 'note' : ''].join(' ');
+  const cls = ['tok', s.gk ? 'gk' : '', !m ? 'empty' : '', m && m.status !== 'ok' && !map ? 'hurt' : '', m && notes[m.id] ? 'note' : '', m ? rsvpCls(map, m.id) : ''].join(' ');
   return `<div class="${cls}" data-i="${i}" style="left:${s.x}%;top:${s.y}%"><div class="dot">${m ? (m.number ?? esc(initials(m.name))) : '+'}</div>${m ? `<div class="nm">${esc(m.name)}</div>` : ''}</div>`;
 }
 // Qué cambia la propuesta respecto del equipo que está armado
@@ -1374,6 +1425,7 @@ function tipReplySheet(id){
 function renderPizarra(){
   pzInit();
   const T = S.T, dt = canBoard(), sug = PZ.mode === 'sug' && canSuggest(), edit = dt || sug;
+  const nx = !isPicadito() && nextMatch(), map = nx ? rsvpMap(nx) : null;
   if (PZ.mode === 'sug' && !sug) pzLeaveSug();
   const forms = FORMATIONS[T.team.players_on_field] || FORMATIONS[11];
   const used = new Set(PZ.slots.map(s => s.m).filter(Boolean));
@@ -1393,10 +1445,11 @@ function renderPizarra(){
     ${myNote ? `<div class="banner sky" style="margin-bottom:10px">📌 <span><b>Indicación para vos:</b> ${esc(myNote)}</span></div>` : ''}
     <div class="pzgrid"><div>
     ${edit ? `<div class="chips scroll" style="margin-bottom:12px">${forms.map(f => `<button class="chip ${f === PZ.formation ? 'on' : ''}" data-f="${f}">${f}</button>`).join('')}</div>` : ''}
-    <div class="pitch${edit ? '' : ' ro'}${sug ? ' sug' : ''}" id="pitch">${PITCH_LINES}${PZ.slots.map((s, i) => tokHTML(s, i, PZ.notes)).join('')}</div>
+    ${map ? `<p class="small muted" style="margin:-4px 0 2px">Colores según la convocatoria vs ${esc(nx.opponent)}:</p>${rsvpLegend(map, PZ.slots.map(s => s.m).filter(Boolean))}` : ''}
+    <div class="pitch${edit ? '' : ' ro'}${sug ? ' sug' : ''}" id="pitch" style="margin-top:6px">${PITCH_LINES}${PZ.slots.map((s, i) => tokHTML(s, i, PZ.notes, map)).join('')}</div>
     ${edit ? `<p class="tiny muted" style="margin-top:6px">Tocá un círculo para elegir quién va. Arrastralo para moverlo.</p>` : ''}
     <div class="section"><div class="section-title"><h2>Suplentes</h2><span class="small muted">${bench.length}</span></div>
-      <div class="bench">${bench.length ? bench.map(m => `<span class="pill ${m.status !== 'ok' ? 'coral' : ''}">${m.number != null ? `<b>${m.number}</b>` : ''} ${esc(m.name)} ${m.status !== 'ok' ? STATUS[m.status][0] : ''}</span>`).join('') : '<span class="muted small">Están todos adentro</span>'}</div></div>
+      <div class="bench">${bench.length ? bench.map(m => `<span class="pill ${map ? rsvpCls(map, m.id) : m.status !== 'ok' ? 'coral' : ''}">${m.number != null ? `<b>${m.number}</b>` : ''} ${esc(m.name)} ${m.status !== 'ok' ? STATUS[m.status][0] : ''}</span>`).join('') : '<span class="muted small">Están todos adentro</span>'}</div></div>
     ${dt ? `<div class="section stack">
       <label class="field"><span>Nombre de este equipo</span><input class="input" id="pz-name" maxlength="40" value="${esc(PZ.name)}" placeholder="Ej: El de gala"></label>
       <button class="btn" id="pz-save" ${PZ.dirty || !PZ.id ? '' : 'disabled'}>${PZ.id ? 'Guardar cambios' : 'Guardar equipo'}</button>
