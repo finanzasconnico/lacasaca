@@ -2371,13 +2371,15 @@ function tablaRanking(box){
   if (!SORTS.some(s => s[0] === S.sortBy)) S.sortBy = SORTS[0][0];
   const k = S.sortBy;
   const minPj = Math.max(1, Math.ceil(playedMatches().length / 3));
-  const list = rows.filter(o => k === 'ent' ? o.a.tcount > 0 : k === 'avg' ? (o.a.avg != null && o.a.pj >= minPj) : o.a.pj > 0)
+  // Los invitados entran cuando suman en ese ranking (por ejemplo, un gol en la planilla oficial)
+  const gst = guests().map(m => ({ m, a: agg(m.id), g: true })).filter(o => ['goals', 'assists', 'figs'].includes(k) ? o.a[k] > 0 : k === 'avg' && o.a.avg != null && o.a.pj >= minPj);
+  const list = [...rows, ...gst].filter(o => k === 'ent' ? o.a.tcount > 0 : k === 'avg' ? (o.a.avg != null && o.a.pj >= minPj) : o.a.pj > 0)
     .sort((a,b) => (b.a[k] ?? -1) - (a.a[k] ?? -1) || b.a.pj - a.a.pj || a.m.name.localeCompare(b.m.name));
   const val = (a) => k === 'avg' ? fmt1(a.avg) : k === 'ent' ? `${a.ent}%` : a[k];
   const medal = (i) => ['🥇','🥈','🥉'][i] || `<span class="num" style="font-size:20px;color:var(--muted)">${i+1}</span>`;
   box.innerHTML = `<div class="chips scroll" style="margin-bottom:12px">${SORTS.map(([s,l]) => `<button class="chip ${s === k ? 'on' : ''}" data-s="${s}">${l}</button>`).join('')}</div>
     ${k === 'avg' ? `<p class="tiny muted" style="margin:-4px 0 10px">Promedio de los puntajes del DT. Entran los que jugaron ${plural(minPj,'partido','partidos')} o más.</p>` : ''}
-    ${list.length ? `<div class="list">${list.map((o, i) => `<button class="lrow" data-p="${o.m.id}" style="${o.m.id === meId() ? 'border-color:var(--grass)' : ''}"><span style="width:30px;text-align:center;font-size:22px">${medal(i)}</span><span class="av" style="width:34px;height:34px;font-size:13px;background:${avColor(o.m.name)}">${esc(initials(o.m.name))}</span><span class="t"><b>${esc(o.m.name)}</b><small>${k === 'ent' ? `${o.a.tdone} de ${o.a.tcount} entrenamientos` : `${o.a.pj} PJ · ${o.a.goals} G · ${o.a.assists} A`}</small></span><span class="rate ${k === 'avg' ? rateCls(o.a.avg) : 'r-na'}" style="${k !== 'avg' ? 'color:var(--ink)' : ''}">${val(o.a)}</span></button>`).join('')}</div>`
+    ${list.length ? `<div class="list">${list.map((o, i) => `<button class="lrow" data-p="${o.m.id}" style="${o.m.id === meId() ? 'border-color:var(--grass)' : ''}"><span style="width:30px;text-align:center;font-size:22px">${medal(i)}</span><span class="av" style="width:34px;height:34px;font-size:13px;background:${avColor(o.m.name)}">${esc(initials(o.m.name))}</span><span class="t"><b>${esc(o.m.name)}</b><small>${o.g ? 'Invitado · ' : ''}${k === 'ent' ? `${o.a.tdone} de ${o.a.tcount} entrenamientos` : `${o.a.pj} PJ · ${o.a.goals} G · ${o.a.assists} A`}</small></span><span class="rate ${k === 'avg' ? rateCls(o.a.avg) : 'r-na'}" style="${k !== 'avg' ? 'color:var(--ink)' : ''}">${val(o.a)}</span></button>`).join('')}</div>`
       : `<div class="card empty muted">Todavía no hay datos para este ranking.</div>`}
     ${!showR ? `<p class="small muted" style="margin-top:12px">🔒 Los puntajes del DT son privados en este equipo: cada uno ve el suyo en Inicio.</p>` : ''}`;
   $$('[data-s]', box).forEach(b => b.onclick = () => { S.sortBy = b.dataset.s; tablaRanking(box); });
