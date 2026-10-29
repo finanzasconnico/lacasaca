@@ -991,6 +991,7 @@ function renderInicio(){
   $$('[data-vote]').forEach(b => b.onclick = () => voteSheet(b.dataset.vote));
   bindTrainCards($('#main'));
   bindPinned($('#main'));
+  bindFueguitos($('#main'));
   const gt = $('#go-tr'); if (gt) gt.onclick = () => { S.tab = 'entrenos'; render(); scrollTo(0,0); };
   bindMatchCards($('#main'));
   bindInvite($('#main'));
@@ -1999,6 +2000,19 @@ function trainCard(t){
 }
 function bindTrainCards(root){ $$('[data-train]', root).forEach(b => b.onclick = () => openTraining(b.dataset.train)); }
 function openTraining(id){ S.tab = 'entrenos'; S.trainId = id; render(); scrollTo(0,0); }
+/* ============ Fueguitos ============ */
+// Misma cuenta: el link lleva el token, así se entra sin apodo ni PIN, y ?habito= crea el hábito ya armado.
+const FUEGUITOS = 'https://fueguitos.vercel.app/';
+const fueguitosURL = (habito) => `${FUEGUITOS}?k=${encodeURIComponent(S.token)}${habito ? '&habito=' + habito : ''}`;
+const FG_HABITS = [['entrenar', '🏃', 'Entrenar'], ['prevencion', '🦵', 'Prevención'], ['elongar', '🧘', 'Elongar'], ['dormir', '😴', 'Dormir 8 h'], ['agua', '💧', 'Tomar agua'], ['comer', '🥗', 'Comer bien']];
+function fueguitosCardHTML(){
+  if (LS.get('casaca_fg_no')) return '';
+  return `<div class="card section" style="border-color:#FF7A1A"><div class="row between" style="align-items:flex-start"><h3>🔥 El entrenamiento invisible</h3><button class="link muted" id="fg-x" aria-label="Ocultar">✕</button></div>
+    <p class="muted small" style="margin:4px 0 10px">Dormir, hidratarte, elongar: lo que hacés fuera de la cancha también suma. Armá el hábito en <b>Fueguitos</b> (es tu misma cuenta) y sostené la racha con amigos.</p>
+    <div class="chips" style="flex-wrap:wrap">${FG_HABITS.map(([k, e, l]) => `<a class="chip" style="text-decoration:none" href="${fueguitosURL(k)}" target="_blank" rel="noopener">${e} ${l}</a>`).join('')}</div>
+    <a class="link" href="${fueguitosURL()}" target="_blank" rel="noopener" style="display:inline-block;margin-top:10px">Abrir Fueguitos →</a></div>`;
+}
+function bindFueguitos(root){ const x = $('#fg-x', root); if (x) x.onclick = () => { LS.set('casaca_fg_no', '1'); render(); }; }
 function renderEntrenos(){
   if (S.trainId && trainings().find(t => t.id === S.trainId)) return renderTraining(S.trainId);
   S.trainId = null;
@@ -2015,10 +2029,12 @@ function renderEntrenos(){
     ${pend.length ? `<div class="section" style="margin-top:12px"><div class="section-title"><h2>Para hacer</h2></div><div class="list">${pend.map(trainCard).join('')}</div></div>` : ''}
     ${up.length ? `<div class="section"><div class="section-title"><h2>Se vienen</h2></div><div class="list">${up.map(trainCard).join('')}</div></div>` : ''}
     ${past.length ? `<div class="section"><div class="section-title"><h2>Anteriores</h2></div><div class="list">${past.map(trainCard).join('')}</div></div>` : ''}
-    ${!trainings().length ? `<div class="card empty"><div class="big">🏋️</div><h3>Todavía no hay entrenamientos</h3><p class="muted small">${adm ? 'Proponé uno en cancha o mandá una rutina para hacer en casa. Si es obligatorio, cada uno manda la foto como prueba.' : 'Cuando el DT proponga uno, aparece acá.'}</p>${adm ? '<button class="btn sm" id="t-new2" style="margin-top:12px">＋ Entrenamiento</button>' : ''}</div>` : ''}`;
+    ${!trainings().length ? `<div class="card empty"><div class="big">🏋️</div><h3>Todavía no hay entrenamientos</h3><p class="muted small">${adm ? 'Proponé uno en cancha o mandá una rutina para hacer en casa. Si es obligatorio, cada uno manda la foto como prueba.' : 'Cuando el DT proponga uno, aparece acá.'}</p>${adm ? '<button class="btn sm" id="t-new2" style="margin-top:12px">＋ Entrenamiento</button>' : ''}</div>` : ''}
+    ${fueguitosCardHTML()}`;
   [$('#t-new'), $('#t-new2')].forEach(b => { if (b) b.onclick = () => trainingEditSheet(null); });
   $('#t-lib').onclick = librarySheet;
   bindPinned($('#main'));
+  bindFueguitos($('#main'));
   const tw = $('#t-week'); if (tw) tw.onclick = weekPlanSheet;
   bindTrainCards($('#main'));
 }
@@ -2774,6 +2790,7 @@ function renderHoy(){
       ${pkFormCard()}`;
     $('#pk-open').onclick = () => pickupEditSheet(null);
     bindPinned($('#main'));
+  bindFueguitos($('#main'));
     return;
   }
   const going = pkGoing(k), list = going.slice(0, k.capacity), wait = going.slice(k.capacity);
@@ -2833,6 +2850,7 @@ function renderHoy(){
   $$('[data-ungoal]').forEach(b => b.onclick = () => pkCall('fc_pickup_goal', { p_pickup: k.id, p_member: null, p_side: 'oscuro', p_undo: b.dataset.ungoal }));
   $$('[data-pp]').forEach(b => b.onclick = () => pkPersonSheet(k, b.dataset.pp));
   bindPinned($('#main'));
+  bindFueguitos($('#main'));
 }
 function pkRow(k, p, n){
   const m = member(p.member_id) || { name: '¿?' };
@@ -3035,7 +3053,9 @@ function profileSheet(){
       ${S.push === 'on' ? '<button class="btn ghost" id="pf-push">🔔 Avisos activados · apagar</button>' : S.push === 'off' ? '<button class="btn ghost" id="pf-push">🔕 Activar avisos al celu</button>' : S.push === 'ios' ? '<p class="small muted">📲 Para recibir avisos en iPhone, instalá la app: Compartir ⬆️ → Agregar a inicio.</p>' : S.push === 'denied' ? '<p class="small muted">🔕 Los avisos están bloqueados para esta página. Se activan desde los ajustes del navegador.</p>' : ''}
       ${!S.me.user.has_pin ? '<button class="btn" id="pf-pin">🔒 Crear PIN para entrar desde otro celu</button>' : ''}
     </div>
-    <div class="card section small"><b>🔥 ¿Usás Fueguitos?</b><p class="muted" style="margin-top:4px">Es la misma cuenta. Anotá ahí el entrenamiento invisible (dormir, hidratarte, entrenar) y mantené la racha con el grupo.</p><a class="link" href="https://fueguitos.vercel.app/" target="_blank" rel="noopener" style="display:inline-block;margin-top:6px">Abrir Fueguitos</a></div>
+    <div class="card section" style="border-color:#FF7A1A"><b>🔥 Fueguitos</b><p class="muted small" style="margin:4px 0 10px">Tus hábitos con racha: dormir, hidratarte, entrenar. Es la misma cuenta, entrás directo.</p>
+      <a class="btn sm" style="width:100%;text-decoration:none;background:#FF7A1A;box-shadow:0 3px 0 #C24E00" href="${fueguitosURL()}" target="_blank" rel="noopener">Ir a Fueguitos</a>
+      <div class="chips" style="flex-wrap:wrap;margin-top:10px">${FG_HABITS.slice(0, 4).map(([k, e, l]) => `<a class="chip" style="text-decoration:none" href="${fueguitosURL(k)}" target="_blank" rel="noopener">＋ ${e} ${l}</a>`).join('')}</div></div>
     <div class="row section" style="justify-content:space-around"><button class="link muted" id="pf-leave">Salir de ${esc(t.name)}</button><button class="link danger" id="pf-out">Cerrar sesión</button></div>`);
   const on = (s, f) => { const e = $(s, el); if (e) e.onclick = () => { closeSheet(); setTimeout(f, 80); }; };
   on('#pf-card', () => playerSheet(meId()));
