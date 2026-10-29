@@ -248,6 +248,8 @@ table.pl td.me{font-weight:800}
 .tok.hurt .dot{background:var(--coral);color:#fff}
 .tok .nm{font-size:12px;font-weight:800;color:#fff;background:rgba(0,0,0,.45);padding:1px 6px;border-radius:6px;max-width:76px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tok.drag{z-index:5}
+.pitch.sug{outline:3px dashed var(--sky,#2b7de9);outline-offset:3px}
+@media (min-width:900px){.wrap.pz{max-width:1000px}.pzgrid{display:grid;grid-template-columns:minmax(0,1fr) 380px;gap:28px;align-items:start}.pzgrid>aside{position:sticky;top:76px;max-height:calc(100vh - 100px);overflow:auto}.pzgrid>aside>.section:first-child{margin-top:0}}
 .pitch.ro .tok{touch-action:pan-y pinch-zoom}
 .tok.drag .dot{transform:scale(1.12)}
 .tok.note .dot::after{content:"";position:absolute;width:12px;height:12px;border-radius:50%;background:var(--sky);border:2px solid #fff;transform:translate(16px,-16px)}
@@ -510,6 +512,7 @@ async function loadTeam(){
   try {
     const [T, TR, RT] = await Promise.all([rpc('fc_team', { ...P(), p_team: S.teamId }), rpc('fc_trainings_list', { ...P(), p_team: S.teamId }).catch(() => null), rpc('fc_routines_list', { ...P(), p_team: S.teamId }).catch(() => [])]);
     S.RT = RT || [];
+    S.TIPS = T && T.team.kind !== 'amistosos' ? await rpc('fc_board_tips', { ...P(), p_team: S.teamId }).catch(() => S.TIPS || []) : [];
     S.T = T; S.TR = TR || { trainings: [], logs: [] };
     S.PK = T.team.kind === 'amistosos' ? await rpc('fc_pickups', { ...P(), p_team: S.teamId }).catch(() => S.PK || []) : null;
     LS.set('casaca_pk_' + S.teamId, JSON.stringify(S.PK));
@@ -1266,36 +1269,144 @@ const PITCH_LINES = `<svg class="lines" viewBox="0 0 68 100" preserveAspectRatio
   <rect x="2.5" y="2.5" width="63" height="95" rx=".5"/><line x1="2.5" y1="50" x2="65.5" y2="50"/><circle cx="34" cy="50" r="8.2"/><circle cx="34" cy="50" r=".6" fill="var(--chalk)"/>
   <rect x="15" y="2.5" width="38" height="15.5"/><rect x="24.5" y="2.5" width="19" height="5.5"/><rect x="15" y="82" width="38" height="15.5"/><rect x="24.5" y="92" width="19" height="5.5"/>
   <path d="M27.5 18a8 8 0 0 0 13 0M27.5 82a8 8 0 0 1 13 0"/></svg>`;
+/* ============ Sugerencias del plantel en la pizarra ============ */
+// Cada uno puede dejar un comentario o armar su propio equipo en una copia de la pizarra; el DT lo ve al costado y decide.
+const canSuggest = () => !canBoard() && S.T.team.board_suggest !== false;
+const tips = () => S.TIPS || [];
+const tipSlots = (slots) => slots.map(s => ({ x: s.x, y: s.y, gk: !!s.gk, m: s.m || null }));
+function tokHTML(s, i, notes = {}){
+  const m = s.m && member(s.m);
+  const cls = ['tok', s.gk ? 'gk' : '', !m ? 'empty' : '', m && m.status !== 'ok' ? 'hurt' : '', m && notes[m.id] ? 'note' : ''].join(' ');
+  return `<div class="${cls}" data-i="${i}" style="left:${s.x}%;top:${s.y}%"><div class="dot">${m ? (m.number ?? esc(initials(m.name))) : '+'}</div>${m ? `<div class="nm">${esc(m.name)}</div>` : ''}</div>`;
+}
+// Qué cambia la propuesta respecto del equipo que está armado
+function tipDiff(t){
+  const base = (t.lineup_id && S.T.lineups.find(l => l.id === t.lineup_id)) || S.T.lineups[0];
+  if (!t.slots || !base) return '';
+  const a = new Set(base.slots.map(s => s.m).filter(Boolean)), b = new Set(t.slots.map(s => s.m).filter(Boolean));
+  const ins = [...b].filter(x => !a.has(x)).map(x => (member(x) || {}).name).filter(Boolean), outs = [...a].filter(x => !b.has(x)).map(x => (member(x) || {}).name).filter(Boolean);
+  const parts = [];
+  if (t.formation && t.formation !== base.formation) parts.push(`${base.formation} → ${t.formation}`);
+  if (ins.length) parts.push(`entra${ins.length > 1 ? 'n' : ''} ${ins.join(', ')}`);
+  if (outs.length) parts.push(`sale${outs.length > 1 ? 'n' : ''} ${outs.join(', ')}`);
+  return parts.join(' · ') || 'Mismos jugadores, otras posiciones';
+}
+function tipsHTML(){
+  const adm = isAdmin(), on = S.T.team.board_suggest !== false;
+  const open = tips().filter(t => t.status === 'abierta').sort((a,b) => b.likes - a.likes || new Date(b.created_at) - new Date(a.created_at));
+  const done = tips().filter(t => t.status !== 'abierta').slice(0, 6);
+  if (!on && !open.length && !adm) return '';
+  const card = (t) => { const m = member(t.member_id) || { name: '¿?' }, mine = t.member_id === meId();
+    return `<div class="card" style="padding:12px 14px;margin-bottom:8px;${t.status !== 'abierta' ? 'opacity:.75' : ''}">
+      <div class="row" style="gap:10px;align-items:center"><span class="av" style="width:30px;height:30px;font-size:12px;background:${avColor(m.name)}">${esc(initials(m.name))}</span>
+        <span style="flex:1;min-width:0"><b>${esc(m.name)}</b> <span class="tiny muted">${fmtWhen(t.created_at)}</span></span>
+        ${t.status === 'usada' ? '<span class="pill ok">✅ Usada</span>' : t.status === 'archivada' ? '<span class="pill">Archivada</span>' : ''}</div>
+      ${t.body ? `<p style="margin:8px 0 0;white-space:pre-line">${esc(t.body)}</p>` : ''}
+      ${t.slots ? `<button class="lrow" data-tipv="${t.id}" style="margin-top:8px;padding:8px 10px"><span style="font-size:20px">🧩</span><span class="t"><b>Propuso un equipo${t.formation ? ' · ' + esc(t.formation) : ''}</b><small>${esc(tipDiff(t))}</small></span><span class="pill sky">Ver</span></button>` : ''}
+      ${t.reply ? `<p class="small" style="margin:8px 0 0;padding:8px 10px;border-radius:10px;background:var(--grass-soft)">💬 <b>DT:</b> ${esc(t.reply)}</p>` : ''}
+      <div class="row" style="gap:14px;margin-top:10px;flex-wrap:wrap;align-items:center">
+        <button class="link ${t.liked ? '' : 'muted'}" data-tipl="${t.id}">👍 ${t.likes || ''}${t.liked ? ' Te gusta' : ' Me gusta'}</button>
+        ${adm && t.status === 'abierta' ? `${t.slots ? `<button class="link" data-tipu="${t.id}">✅ Usar este equipo</button>` : `<button class="link" data-tips="${t.id}:usada">✅ Tomada</button>`}<button class="link" data-tipr="${t.id}">💬 Responder</button><button class="link muted" data-tips="${t.id}:archivada">Archivar</button>` : ''}
+        ${adm && t.status !== 'abierta' ? `<button class="link muted" data-tips="${t.id}:abierta">Reabrir</button>` : ''}
+        ${!adm && mine && t.status === 'abierta' ? `<button class="link muted" data-tips="${t.id}:archivada">Retirar</button>` : ''}
+      </div></div>`; };
+  return `<div class="section" id="tips"><div class="section-title"><h2>💡 Sugerencias del plantel</h2><span class="small muted">${open.length || ''}</span></div>
+    ${!on ? `<p class="small muted" style="margin:-4px 0 10px">Apagadas: el plantel no puede sugerir. Se activan en Ajustes.</p>` : canSuggest() ? '' : `<p class="small muted" style="margin:-4px 0 10px">Lo que proponga el plantel aparece acá: lo podés ver en la cancha y usarlo con un toque.</p>`}
+    ${canSuggest() && PZ.mode !== 'sug' ? `<div class="grid2" style="margin-bottom:10px"><button class="btn sm" style="width:100%" id="tip-team">✏️ Proponer cambios</button><button class="btn ghost sm" style="width:100%" id="tip-text">💬 Comentar</button></div>` : ''}
+    ${open.length ? open.map(card).join('') : '<p class="small muted">Todavía no hay sugerencias.</p>'}
+    ${done.length ? `<details style="margin-top:6px"><summary class="small muted" style="cursor:pointer;font-weight:700">Usadas y archivadas (${done.length})</summary><div style="margin-top:8px">${done.map(card).join('')}</div></details>` : ''}
+  </div>`;
+}
+async function tipsReload(){ S.TIPS = await rpc('fc_board_tips', { ...P(), p_team: S.teamId }).catch(() => S.TIPS || []); renderPizarra(); }
+async function tipCall(fn, args, msg){ try { await rpc(fn, { ...P(), ...args }); if (msg) toast(msg); } catch(e){ toast(e.message === 'DEMASIADAS' ? 'Ya tenés 10 sugerencias abiertas: esperá que el DT las vea.' : e.message, 3500); } await tipsReload(); }
+function bindTips(root){
+  const tm = $('#tip-team', root); if (tm) tm.onclick = () => { PZ.orig = { slots: PZ.slots.map(s => ({ ...s })), formation: PZ.formation }; PZ.mode = 'sug'; renderPizarra(); scrollTo(0, 0); toast('Mové jugadores o cambiá la formación. El equipo del DT no se toca.', 3500); };
+  const tx = $('#tip-text', root); if (tx) tx.onclick = () => tipSendSheet(false);
+  $$('[data-tipl]', root).forEach(b => b.onclick = () => tipCall('fc_board_tip_like', { p_tip: b.dataset.tipl }));
+  $$('[data-tips]', root).forEach(b => b.onclick = () => { const [id, st] = b.dataset.tips.split(':'); tipCall('fc_board_tip_status', { p_tip: id, p_status: st }, { usada: 'Marcada como tomada ✅', archivada: 'Archivada', abierta: 'Reabierta' }[st]); });
+  $$('[data-tipv]', root).forEach(b => b.onclick = () => tipViewSheet(b.dataset.tipv));
+  $$('[data-tipu]', root).forEach(b => b.onclick = () => tipUse(b.dataset.tipu));
+  $$('[data-tipr]', root).forEach(b => b.onclick = () => tipReplySheet(b.dataset.tipr));
+}
+function tipSendSheet(withTeam){
+  const el = openSheet(`<h2>${withTeam ? '🧩 Mandar mi propuesta' : '💬 Sugerencia para el DT'}</h2>
+    <p class="muted">${withTeam ? `Va tu equipo (${esc(PZ.formation)}): ${esc(tipDiff({ lineup_id: PZ.id, formation: PZ.formation, slots: PZ.slots }))}.` : 'La ve el DT al lado de la pizarra y el plantel la puede apoyar con 👍.'}</p>
+    <label class="field section"><span>${withTeam ? '¿Por qué? (opcional)' : 'Tu sugerencia'}</span><textarea class="input" id="ts-b" rows="3" maxlength="300" placeholder="${withTeam ? 'Ej: con Ivo arriba presionamos mejor la salida' : 'Ej: contra Amanita jugaría con 5 atrás, son muy rápidos'}"></textarea></label>
+    <button class="btn section" id="ts-ok">Mandar</button>`);
+  $('#ts-ok', el).onclick = async () => {
+    const body = $('#ts-b', el).value.trim();
+    if (!withTeam && !body) return toast('Escribí tu sugerencia');
+    $('#ts-ok', el).disabled = true;
+    try {
+      await rpc('fc_board_tip_save', { ...P(), p_team: S.teamId, p_lineup: PZ.id, p_body: body, p_formation: withTeam ? PZ.formation : null, p_slots: withTeam ? tipSlots(PZ.slots) : null });
+      closeSheet(); if (withTeam) pzLeaveSug(); toast('Listo: el DT la ve en la pizarra 💡'); await tipsReload();
+    } catch(e){ $('#ts-ok', el).disabled = false; toast(e.message === 'DEMASIADAS' ? 'Ya tenés 10 sugerencias abiertas: esperá que el DT las vea.' : e.message === 'NO_PERMITIDO' ? 'El DT apagó las sugerencias.' : e.message, 3500); }
+  };
+}
+function pzLeaveSug(){ if (PZ.orig){ PZ.slots = PZ.orig.slots; PZ.formation = PZ.orig.formation; } PZ.orig = null; PZ.mode = null; }
+function tipViewSheet(id){
+  const t = tips().find(x => x.id === id); if (!t) return;
+  const m = member(t.member_id) || { name: '¿?' };
+  const el = openSheet(`<h2>🧩 El equipo de ${esc(m.name)}</h2><p class="muted">${esc(tipDiff(t))}</p>
+    ${t.body ? `<p style="margin:8px 0 0">“${esc(t.body)}”</p>` : ''}
+    <div class="pitch ro section" style="max-width:340px;margin-left:auto;margin-right:auto">${PITCH_LINES}${t.slots.map((s, i) => tokHTML(s, i)).join('')}</div>
+    ${isAdmin() && t.status === 'abierta' ? '<button class="btn section" id="tv-use">✅ Usar este equipo</button>' : ''}`);
+  const u = $('#tv-use', el); if (u) u.onclick = () => { closeSheet(); setTimeout(() => tipUse(id), 80); };
+}
+// El DT carga la propuesta en la pizarra para revisarla y guardarla
+function tipUse(id){
+  const t = tips().find(x => x.id === id); if (!t || !t.slots) return;
+  if (t.lineup_id && t.lineup_id !== PZ.id){ const L = S.T.lineups.find(l => l.id === t.lineup_id); if (L) PZ = { team: S.T.team.id, id: L.id, name: L.name, formation: L.formation, slots: L.slots.map(s => ({ ...s })), notes: { ...(L.notes || {}) }, dirty: false }; }
+  PZ.slots = t.slots.map(s => ({ ...s })); if (t.formation) PZ.formation = t.formation; PZ.dirty = true;
+  rpc('fc_board_tip_status', { ...P(), p_tip: id, p_status: 'usada' }).then(tipsReload).catch(() => {});
+  renderPizarra(); scrollTo(0, 0);
+  toast(`Cargué el equipo de ${(member(t.member_id) || {}).name || 'la sugerencia'}. Revisalo y tocá Guardar.`, 4000);
+}
+function tipReplySheet(id){
+  const t = tips().find(x => x.id === id); if (!t) return;
+  const el = openSheet(`<h2>💬 Responder a ${esc((member(t.member_id) || {}).name || '')}</h2>
+    <label class="field section"><span>Tu respuesta</span><textarea class="input" id="tr-b" rows="3" maxlength="200" placeholder="Ej: buena, lo probamos en el entrenamiento">${esc(t.reply || '')}</textarea></label>
+    <div class="grid2 section"><button class="btn sm" style="width:100%" id="tr-ok">Responder</button><button class="btn ghost sm" style="width:100%" id="tr-used">Responder y marcar tomada</button></div>`);
+  const go = (st) => { const r = $('#tr-b', el).value.trim(); if (!r) return toast('Escribí la respuesta'); closeSheet(); tipCall('fc_board_tip_status', { p_tip: id, p_status: st, p_reply: r }, 'Respuesta mandada'); };
+  $('#tr-ok', el).onclick = () => go(t.status); $('#tr-used', el).onclick = () => go('usada');
+}
+
 function renderPizarra(){
   pzInit();
-  const T = S.T, dt = canBoard();
+  const T = S.T, dt = canBoard(), sug = PZ.mode === 'sug' && canSuggest(), edit = dt || sug;
+  if (PZ.mode === 'sug' && !sug) pzLeaveSug();
   const forms = FORMATIONS[T.team.players_on_field] || FORMATIONS[11];
   const used = new Set(PZ.slots.map(s => s.m).filter(Boolean));
   const bench = players().filter(m => !used.has(m.id));
   const myNote = PZ.notes[meId()];
-  if (!dt && !T.lineups.length){
-    $('#main').innerHTML = `${plSeg('pizarra')}<h1 style="margin-bottom:14px">Pizarra</h1><div class="card empty"><div class="big">📋</div><h3>Todavía no hay equipo armado</h3><p class="muted small">Cuando el DT arme la formación, la ves acá.</p></div>`;
+  if (!dt && !T.lineups.length && !sug){
+    $('#main').innerHTML = `${plSeg('pizarra')}<h1 style="margin-bottom:14px">Pizarra</h1><div class="card empty"><div class="big">📋</div><h3>Todavía no hay equipo armado</h3><p class="muted small">Cuando el DT arme la formación, la ves acá.${canSuggest() ? ' Mientras, podés proponerle el tuyo.' : ''}</p></div>${tipsHTML()}`;
+    bindTips($('#main'));
     return;
   }
   $('#main').innerHTML = `
     ${plSeg('pizarra')}<div class="row between" style="margin-bottom:10px"><h1>Pizarra</h1><button class="btn ghost sm" id="pz-img">📤 Compartir</button></div>
     ${dt && T.lineups.length ? `<div class="chips scroll" style="margin-bottom:10px">${T.lineups.map(l => `<button class="chip ${l.id === PZ.id ? 'on' : ''}" data-l="${l.id}">${esc(l.name)}</button>`).join('')}<button class="chip" id="pz-new">＋ Nuevo</button></div>` : ''}
-    ${!dt ? `<p class="muted small" style="margin:-4px 0 10px">${esc(PZ.name)} · ${PZ.formation}</p>` : ''}
+    ${sug ? `<div class="banner sky" style="margin-bottom:10px">✏️ <span><b>Estás armando tu propuesta.</b> Tocá un círculo para cambiar quién va o arrastralo. El equipo del DT no se toca.</span></div>
+      <div class="grid2" style="margin-bottom:12px"><button class="btn sm" style="width:100%" id="sg-send">💡 Mandar</button><button class="btn ghost sm" style="width:100%" id="sg-cancel">Cancelar</button></div>`
+      : !dt ? `<p class="muted small" style="margin:-4px 0 10px">${esc(PZ.name)} · ${PZ.formation}</p>` : ''}
     ${myNote ? `<div class="banner sky" style="margin-bottom:10px">📌 <span><b>Indicación para vos:</b> ${esc(myNote)}</span></div>` : ''}
-    ${dt ? `<div class="chips scroll" style="margin-bottom:12px">${forms.map(f => `<button class="chip ${f === PZ.formation ? 'on' : ''}" data-f="${f}">${f}</button>`).join('')}</div>` : ''}
-    <div class="pitch${dt ? '' : ' ro'}" id="pitch">${PITCH_LINES}${PZ.slots.map((s, i) => {
-      const m = s.m && member(s.m);
-      const cls = ['tok', s.gk ? 'gk' : '', !m ? 'empty' : '', m && m.status !== 'ok' ? 'hurt' : '', m && PZ.notes[m.id] ? 'note' : ''].join(' ');
-      return `<div class="${cls}" data-i="${i}" style="left:${s.x}%;top:${s.y}%"><div class="dot">${m ? (m.number ?? esc(initials(m.name))) : '+'}</div>${m ? `<div class="nm">${esc(m.name)}</div>` : ''}</div>`;
-    }).join('')}</div>
-    ${dt ? `<p class="tiny muted" style="margin-top:6px">Tocá un círculo para elegir quién va. Arrastralo para moverlo.</p>` : ''}
+    <div class="pzgrid"><div>
+    ${edit ? `<div class="chips scroll" style="margin-bottom:12px">${forms.map(f => `<button class="chip ${f === PZ.formation ? 'on' : ''}" data-f="${f}">${f}</button>`).join('')}</div>` : ''}
+    <div class="pitch${edit ? '' : ' ro'}${sug ? ' sug' : ''}" id="pitch">${PITCH_LINES}${PZ.slots.map((s, i) => tokHTML(s, i, PZ.notes)).join('')}</div>
+    ${edit ? `<p class="tiny muted" style="margin-top:6px">Tocá un círculo para elegir quién va. Arrastralo para moverlo.</p>` : ''}
     <div class="section"><div class="section-title"><h2>Suplentes</h2><span class="small muted">${bench.length}</span></div>
       <div class="bench">${bench.length ? bench.map(m => `<span class="pill ${m.status !== 'ok' ? 'coral' : ''}">${m.number != null ? `<b>${m.number}</b>` : ''} ${esc(m.name)} ${m.status !== 'ok' ? STATUS[m.status][0] : ''}</span>`).join('') : '<span class="muted small">Están todos adentro</span>'}</div></div>
     ${dt ? `<div class="section stack">
       <label class="field"><span>Nombre de este equipo</span><input class="input" id="pz-name" maxlength="40" value="${esc(PZ.name)}" placeholder="Ej: El de gala"></label>
       <button class="btn" id="pz-save" ${PZ.dirty || !PZ.id ? '' : 'disabled'}>${PZ.id ? 'Guardar cambios' : 'Guardar equipo'}</button>
       ${PZ.id ? '<button class="link danger" id="pz-del" style="display:block;margin:6px auto 0">Borrar este equipo</button>' : ''}
-    </div>` : ''}`;
+    </div>` : ''}
+    </div><aside>${tipsHTML()}</aside></div>`;
+  $('#main').classList.add('pz');
+  bindTips($('#main'));
+  const sgs = $('#sg-send'); if (sgs) sgs.onclick = () => tipSendSheet(true);
+  const sgc = $('#sg-cancel'); if (sgc) sgc.onclick = () => { pzLeaveSug(); renderPizarra(); };
   $$('[data-f]').forEach(b => b.onclick = () => { pzSetFormation(b.dataset.f); renderPizarra(); });
   $$('[data-l]').forEach(b => b.onclick = () => { const L = T.lineups.find(l => l.id === b.dataset.l); PZ = { team: T.team.id, id: L.id, name: L.name, formation: L.formation, slots: L.slots.map(s => ({ ...s })), notes: { ...(L.notes || {}) }, dirty: false }; renderPizarra(); });
   const nw = $('#pz-new'); if (nw) nw.onclick = () => { pzInit(true); PZ.name = `Equipo ${T.lineups.length + 1}`; renderPizarra(); };
@@ -1303,7 +1414,7 @@ function renderPizarra(){
   const sv = $('#pz-save'); if (sv) sv.onclick = savePizarra;
   const dl = $('#pz-del'); if (dl) dl.onclick = () => confirmSheet('¿Borrar este equipo?', `Se borra «${esc(PZ.name)}» de la pizarra.`, 'Borrar', async () => { try { await rpc('fc_lineup_delete', { ...P(), p_id: PZ.id }); closeSheet(); PZ = null; await refresh(); } catch(e){ toast(e.message); } });
   $('#pz-img').onclick = sharePizarra;
-  if (dt) bindPitchDrag();
+  if (edit) bindPitchDrag();
 }
 function bindPitchDrag(){
   const pitch = $('#pitch');
@@ -1321,7 +1432,7 @@ function bindPitchDrag(){
     });
     t.addEventListener('pointerup', (e) => {
       if (e.pointerId !== id) return; id = null; t.classList.remove('drag');
-      if (moved){ PZ.dirty = true; const b = $('#pz-save'); if (b) b.disabled = false; }
+      if (moved){ PZ.dirty = true; const b = $('#pz-save'); if (b) b.disabled = false; if (PZ.mode === 'sug') renderPizarra(); }
       else slotSheet(+t.dataset.i);
     });
     t.addEventListener('pointercancel', () => { id = null; t.classList.remove('drag'); });
@@ -1332,7 +1443,7 @@ function slotSheet(i){
   const inSlot = (id) => PZ.slots.findIndex(z => z.m === id);
   const list = [...players(), ...guests()].sort((a,b) => (a.status === 'ok' ? 0 : 1) - (b.status === 'ok' ? 0 : 1) || (inSlot(a.id) >= 0) - (inSlot(b.id) >= 0) || a.name.localeCompare(b.name));
   const el = openSheet(`<h2>${s.gk ? '🧤 Arquero' : '¿Quién va acá?'}</h2>
-    ${cur ? `<label class="field section"><span>Indicación para ${esc(cur.name)}</span><input class="input" id="sl-n" maxlength="80" value="${esc(PZ.notes[cur.id] || '')}" placeholder="Ej: vos marcás al 10"></label><button class="btn sm ghost" id="sl-ns" style="margin-top:8px">Guardar indicación</button>` : ''}
+    ${cur && canBoard() && PZ.mode !== 'sug' ? `<label class="field section"><span>Indicación para ${esc(cur.name)}</span><input class="input" id="sl-n" maxlength="80" value="${esc(PZ.notes[cur.id] || '')}" placeholder="Ej: vos marcás al 10"></label><button class="btn sm ghost" id="sl-ns" style="margin-top:8px">Guardar indicación</button>` : ''}
     <div class="list section">${list.map(m => { const at = inSlot(m.id); return `<button class="lrow" data-id="${m.id}"><span class="av" style="background:${avColor(m.name)}">${m.number ?? esc(initials(m.name))}</span><span class="t"><b>${esc(m.name)}</b><small>${(m.positions || []).join(' · ') || 'Sin posición'}${m.status !== 'ok' ? ` · ${STATUS[m.status][0]} ${STATUS[m.status][1]}` : ''}</small></span>${at === i ? '<span class="pill ok">Acá</span>' : at >= 0 ? '<span class="pill">En cancha</span>' : ''}</button>`; }).join('')}</div>
     ${cur ? '<button class="link danger section" id="sl-x" style="display:block;margin:16px auto 0">Dejar vacío</button>' : ''}`);
   $$('.lrow', el).forEach(b => b.onclick = () => {
@@ -2905,7 +3016,7 @@ function inviteSheet(){
 }
 function settingsSheet(){
   const t = S.T.team;
-  let size = t.players_on_field, pub = t.ratings_public, kind = t.kind || 'torneo', day = t.usual_day ?? 4;
+  let size = t.players_on_field, pub = t.ratings_public, kind = t.kind || 'torneo', day = t.usual_day ?? 4, bs = t.board_suggest !== false;
   const el = openSheet(`<h2>Ajustes del equipo</h2>
     <form class="stack section" id="st">
       <div class="grid2" style="grid-template-columns:80px 1fr"><label class="field"><span>Escudo</span><input class="input" id="st-e" maxlength="4" value="${esc(t.emoji)}" style="text-align:center;font-size:24px"></label>
@@ -2924,6 +3035,7 @@ function settingsSheet(){
       <div class="field"><span>¿Qué juegan?</span><div class="seg" id="st-f">${FORMATS.map(([n,l]) => `<button type="button" data-n="${n}" class="${n === size ? 'on' : ''}">${l.replace('Fútbol ','F')}</button>`).join('')}</div><div class="hint">Cambia las formaciones de la pizarra.</div></div>
       <div class="field" id="st-minf" ${kind === 'amistosos' ? 'hidden' : ''}><span>Mínimo de confirmados</span><div class="row" style="gap:12px;align-items:center">${stepperHTML('st-min', t.min_players ?? (t.players_on_field + 3), 'confirmados')}<span class="small muted">A 2 días del partido, si hay menos, la app les avisa a los que no respondieron.</span></div></div>
       <div class="field"><span>¿Quién arma las cartas?</span><div class="seg" id="st-cm">${[['dt','Solo el DT'],['staff','DT y ayudantes'],['self','Cada uno la suya']].map(([k,l]) => `<button type="button" data-k="${k}" class="${cardMode() === k ? 'on' : ''}">${l}</button>`).join('')}</div><div class="hint">Si cada uno arma la suya, el DT igual las ve y las puede corregir.</div></div>
+      <div class="field"><span>¿El plantel puede sugerir en la pizarra?</span><div class="seg" id="st-bs"><button type="button" data-v="1" class="${bs ? 'on' : ''}">Sí</button><button type="button" data-v="0" class="${!bs ? 'on' : ''}">No</button></div><div class="hint">Cada uno puede comentar o proponer su equipo. Lo ves al lado de la pizarra y decidís vos.</div></div>
       <div class="field"><span>¿Quién ve los puntajes del DT?</span><div class="seg" id="st-p"><button type="button" data-v="1" class="${pub ? 'on' : ''}">Todo el plantel</button><button type="button" data-v="0" class="${!pub ? 'on' : ''}">Cada uno el suyo</button></div><div class="hint">Por defecto los ve todo el equipo. Si preferís, cada uno ve solo el suyo.</div></div>
       <button class="btn" type="submit">Guardar</button>
     </form>
@@ -2933,13 +3045,14 @@ function settingsSheet(){
   $('#st-lg', el).onclick = () => { closeSheet(); setTimeout(leagueSetSheet, 80); };
   $$('#st-f button', el).forEach(b => b.onclick = () => { size = +b.dataset.n; $$('#st-f button', el).forEach(x => x.classList.toggle('on', x === b)); });
   bindSteppers(el, { 'st-min': [5, 30, 1] });
+  $$('#st-bs button', el).forEach(b => b.onclick = () => { bs = b.dataset.v === '1'; $$('#st-bs button', el).forEach(x => x.classList.toggle('on', x === b)); });
   $$('#st-k button', el).forEach(b => b.onclick = () => { kind = b.dataset.k; $$('#st-k button', el).forEach(x => x.classList.toggle('on', x === b)); $('#st-am', el).hidden = kind !== 'amistosos'; $('#st-minf', el).hidden = kind === 'amistosos'; });
   $$('#st-d .chip', el).forEach(b => b.onclick = () => { day = +b.dataset.d; $$('#st-d .chip', el).forEach(x => x.classList.toggle('on', x === b)); });
   let cm = cardMode();
   $$('#st-cm button', el).forEach(b => b.onclick = () => { cm = b.dataset.k; $$('#st-cm button', el).forEach(x => x.classList.toggle('on', x === b)); });
   $$('#st-p button', el).forEach(b => b.onclick = () => { pub = b.dataset.v === '1'; $$('#st-p button', el).forEach(x => x.classList.toggle('on', x === b)); });
   const save = async (p, msg) => { try { await rpc('fc_team_settings', { ...P(), p_team: S.teamId, p }); closeSheet(); await loadMe(); await refresh(); toast(msg); } catch(e){ toast(e.message); } };
-  $('#st', el).onsubmit = (e) => { e.preventDefault(); if (size !== t.players_on_field) PZ = null; save({ name: $('#st-n', el).value.trim(), emoji: $('#st-e', el).value.trim(), category: $('#st-c', el).value.trim(), players_on_field: size, ratings_public: pub, card_mode: cm, min_players: stepVal(el, 'st-min'),
+  $('#st', el).onsubmit = (e) => { e.preventDefault(); if (size !== t.players_on_field) PZ = null; save({ name: $('#st-n', el).value.trim(), emoji: $('#st-e', el).value.trim(), category: $('#st-c', el).value.trim(), players_on_field: size, ratings_public: pub, card_mode: cm, min_players: stepVal(el, 'st-min'), board_suggest: bs,
     kind, ...(kind === 'amistosos' ? { place: $('#st-pl', el).value.trim(), place_url: $('#st-pu', el).value.trim(), usual_day: day, usual_time: $('#st-h', el).value, usual_size: $('#st-cu', el).value, price: $('#st-pr', el).value, alias: $('#st-al', el).value.trim() } : {}) }, 'Ajustes guardados'); };
   $('#st-nc', el).onclick = () => save({ new_code: true }, 'Código de jugadores nuevo');
   $('#st-nd', el).onclick = () => save({ new_dt_code: true }, 'Código de DT nuevo');
