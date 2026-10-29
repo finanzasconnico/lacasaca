@@ -251,6 +251,8 @@ table.pl td.me{font-weight:800}
 .tok.c-voy .dot{background:#1FA84F;color:#fff}.tok.c-no .dot{background:#E5484D;color:#fff}.tok.c-duda .dot{background:#F5A524;color:#2a1a00}.tok.c-none .dot{background:#C9D3CC;color:#33433a}
 i.lg{display:inline-block;width:11px;height:11px;border-radius:50%;margin-right:5px;vertical-align:-1px}i.lg.c-voy{background:#1FA84F}i.lg.c-no{background:#E5484D}i.lg.c-duda{background:#F5A524}i.lg.c-none{background:#C9D3CC}
 .pill.c-voy{background:#DDF5E4;color:#0d5a28}.pill.c-no{background:#FDE2E2;color:#8f1d20}.pill.c-duda{background:#FFF0D1;color:#6b4300}.pill.c-none{background:var(--line);color:var(--ink)}
+.demobar{background:#1D2B22;color:#fff;padding-top:var(--safe-t)}.demobar .inner{max-width:520px;margin:0 auto;padding:6px 12px;display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.demobar .mini-seg{display:inline-flex;background:rgba(255,255,255,.12);border-radius:10px;padding:2px}.demobar .mini-seg button{color:#fff;font-weight:800;font-size:13px;padding:5px 10px;border-radius:8px;min-height:0}.demobar .mini-seg button.on{background:#fff;color:#1D2B22}
 .gate{min-height:calc(100vh - 210px);display:flex;flex-direction:column;justify-content:center;text-align:center}
 .gate .when{font-family:var(--f-num);font-weight:900;font-size:34px;line-height:1.05;margin:10px 0 4px}
 .gate .rsvp{margin-top:22px}
@@ -350,7 +352,7 @@ const BASE = `${location.origin}${location.pathname.replace(/[^/]*$/, '')}`;
 /* ============ Utilidades ============ */
 const LS = {
   get(k){ try { return localStorage.getItem(k); } catch(e){ return null; } },
-  set(k,v){ try { localStorage.setItem(k,v); } catch(e){} },
+  set(k,v){ if (window.S && S.demo) return; try { localStorage.setItem(k,v); } catch(e){} },
   del(k){ try { localStorage.removeItem(k); } catch(e){} }
 };
 const $ = (s, el=document) => el.querySelector(s);
@@ -460,6 +462,7 @@ const ERRORS = {
 };
 let netOnline = true;
 async function rpc(fn, args={}){
+  if (S.demo) return DEMO.rpc(fn, args);
   let res;
   const ctl = new AbortController(); const timer = setTimeout(() => ctl.abort(), 12000);
   try {
@@ -485,7 +488,7 @@ async function rpc(fn, args={}){
 function setNet(on){ if (netOnline !== on){ netOnline = on; const b = $('#offline'); if (b) b.hidden = on; } }
 
 /* ============ Estado ============ */
-const S = {
+var S = {
   token: LS.get('casaca_token'),
   me: null, T: null,
   teamId: LS.get('casaca_team'),
@@ -599,12 +602,14 @@ const STATUS = { ok: ['✅','Disponible'], lesionado: ['🤕','Lesionado'], ause
 async function boot(){
   const q = new URLSearchParams(location.search);
   if (q.get('e')) S.pendingJoin = q.get('e').toUpperCase();
+  const demo = q.get('demo');
   if (TABS.some(t => t[0] === q.get('tab')) || q.get('tab') === 'pizarra') S.tab = q.get('tab');
   // Links de los avisos: ?team=…&m=partido o &t=entrenamiento
   if (q.get('team')) S.teamId = q.get('team');
   if (q.get('m')){ S.tab = 'partidos'; S.matchId = q.get('m'); }
   if (q.get('t')){ S.tab = 'entrenos'; S.trainId = q.get('t'); }
   if (q.toString()) history.replaceState(null, '', location.pathname);
+  if (demo){ startDemo(demo === 'jugador' ? 'jugador' : 'dt'); return; }
   if (!S.token){ renderWelcome(); return; }
   try { await loadMe(); }
   catch(e){
@@ -627,6 +632,27 @@ function renderOffline(msg){
 
 /* ============ Bienvenida y cuenta ============ */
 const pinInput = (id) => `<input class="input" id="${id}" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="off" placeholder="••••">`;
+/* ============ Equipo de ejemplo ============ */
+// Todo pasa en el celu (demo.js): se puede tocar cualquier cosa y no se guarda nada en la base.
+async function startDemo(role){
+  try {
+    if (!window.DEMO) await new Promise((ok, ko) => { const sc = document.createElement('script'); sc.src = 'demo.js?v=1'; sc.onload = ok; sc.onerror = ko; document.head.appendChild(sc); });
+  } catch(e){ toast('No se pudo abrir el ejemplo. Revisá tu internet.'); return; }
+  S.demo = true; S.token = 'demo'; S.teamId = 'demo'; S.push = 'no'; PZ = null; S.gateLater = {}; S.matchId = null; S.trainId = null;
+  DEMO.setRole(role); S.tab = 'inicio';
+  await loadMe(); await loadTeam(); render(); scrollTo(0, 0);
+  toast(role === 'dt' ? '👀 Estás como DT del equipo de ejemplo' : '👀 Estás como jugador del equipo de ejemplo', 3000);
+}
+function demoBarHTML(){
+  const r = DEMO.role;
+  return `<div class="demobar"><div class="inner"><span class="tiny"><b>👀 Equipo de ejemplo</b> · no se guarda nada</span>
+    <span class="row" style="gap:6px"><span class="seg mini-seg"><button data-demo="dt" class="${r === 'dt' ? 'on' : ''}">DT</button><button data-demo="jugador" class="${r === 'jugador' ? 'on' : ''}">Jugador</button></span>
+    <button class="btn sm" id="demo-out" style="padding:0 12px;min-height:32px">Crear mi cuenta</button></span></div></div>`;
+}
+function bindDemoBar(){
+  $$('[data-demo]').forEach(b => b.onclick = () => { if (b.dataset.demo !== DEMO.role) startDemo(b.dataset.demo); });
+  $('#demo-out').onclick = () => location.replace(location.pathname);
+}
 function renderWelcome(){
   $('#app').innerHTML = `
   <div class="welcome">
@@ -645,8 +671,11 @@ function renderWelcome(){
       <button class="btn" type="submit">Entrar a la cancha</button>
     </form>
     <button class="link" id="have" style="margin:16px auto 0;display:block">Ya tengo cuenta (sirve la de Fueguitos)</button>
+    <div class="card" style="margin-top:26px;text-align:center"><b>👀 ¿Querés ver cómo funciona?</b><p class="small muted" style="margin:4px 0 12px">Entrá a un equipo de ejemplo con partidos, pizarra, torneo y entrenamientos. Tocá lo que quieras: no se guarda nada.</p>
+      <button class="btn ghost" id="demo-go" type="button">Probar con un equipo de ejemplo</button></div>
   </div>`;
   $('#have').onclick = loginSheet;
+  $('#demo-go').onclick = () => startDemo('dt');
   if (S.pendingJoin){
     $('#inv-have').onclick = loginSheet;
     rpc('fc_team_preview', { p_code: S.pendingJoin }).then(t => { const n = $('#inv-name'); if (n) n.textContent = `${t.emoji} ${t.name}${t.staff ? ' (cuerpo técnico)' : ''}`; }).catch(() => {});
@@ -817,13 +846,15 @@ function render(){
   const role = S.T.me.role === 'jugador' ? '' : ROLE[S.T.me.role];
   const meM = member(meId());
   $('#app').innerHTML = `
+    ${S.demo ? demoBarHTML() : ''}
     <div class="status"><div class="offline" id="offline" ${netOnline ? 'hidden' : ''}>Sin señal: estás viendo lo último que se cargó</div><div class="inner">
       <button class="teamsel" id="teamsel" aria-label="Cambiar de equipo"><span class="em">${esc(t.emoji)}</span><span class="ell">${esc(t.name)}</span>${role ? `<span class="role">${role}</span>` : ''}<span class="chev">▼</span></button>
       <button class="av" id="me-av" style="background:${avColor(S.me.user.nick)}" aria-label="Mi perfil">${esc(initials(meM ? meM.name : S.me.user.nick))}</button>
     </div></div>
     <main class="wrap" id="main"></main>
     <nav class="tabs" aria-label="Secciones"><div class="inner">${(isPicadito() ? TABS_PK : TABS).map(([k,l]) => { const on = S.tab === k || (k === 'plantel' && S.tab === 'pizarra'); return `<button data-tab="${k}" class="${on ? 'on' : ''}" aria-current="${on ? 'page' : 'false'}">${ICONS[k]}${l}</button>`; }).join('')}</div></nav>`;
-  $('#teamsel').onclick = teamsSheet;
+  $('#teamsel').onclick = S.demo ? () => toast('Es un equipo de ejemplo. Creá tu cuenta para armar el tuyo.', 3000) : teamsSheet;
+  if (S.demo) bindDemoBar();
   $('#me-av').onclick = profileSheet;
   $$('nav.tabs button').forEach(b => b.onclick = () => { S.tab = b.dataset.tab; S.matchId = null; S.trainId = null; S.pickId = null; render(); scrollTo(0,0); });
   if (isPicadito() && S.tab === 'pizarra') S.tab = 'partidos';
@@ -848,7 +879,7 @@ function teamsSheet(){
   $$('.lrow', el).forEach(b => b.onclick = async () => { closeSheet(); if (b.dataset.id === S.teamId) return; S.teamId = b.dataset.id; S.matchId = null; LS.set('casaca_team', S.teamId); $('#main').innerHTML = '<div class="spinner"></div>'; await refresh(); });
   $('#ts-j', el).onclick = joinSheet; $('#ts-c', el).onclick = createTeamSheet;
 }
-function logout(){ LS.del('casaca_token'); LS.set('casaca_salio', '1'); location.replace(location.pathname); }
+function logout(){ if (S.demo) return location.replace(location.pathname); LS.del('casaca_token'); LS.set('casaca_salio', '1'); location.replace(location.pathname); }
 
 /* ============ Inicio ============ */
 function rsvpButtons(x, mine){
@@ -2006,7 +2037,7 @@ const FUEGUITOS = 'https://fueguitos.vercel.app/';
 const fueguitosURL = (habito) => `${FUEGUITOS}?k=${encodeURIComponent(S.token)}${habito ? '&habito=' + habito : ''}`;
 const FG_HABITS = [['entrenar', '🏃', 'Entrenar'], ['prevencion', '🦵', 'Prevención'], ['elongar', '🧘', 'Elongar'], ['dormir', '😴', 'Dormir 8 h'], ['agua', '💧', 'Tomar agua'], ['comer', '🥗', 'Comer bien']];
 function fueguitosCardHTML(){
-  if (LS.get('casaca_fg_no')) return '';
+  if (LS.get('casaca_fg_no') || S.demo) return '';
   return `<div class="card section" style="border-color:#FF7A1A"><div class="row between" style="align-items:flex-start"><h3>🔥 El entrenamiento invisible</h3><button class="link muted" id="fg-x" aria-label="Ocultar">✕</button></div>
     <p class="muted small" style="margin:4px 0 10px">Dormir, hidratarte, elongar: lo que hacés fuera de la cancha también suma. Armá el hábito en <b>Fueguitos</b> (es tu misma cuenta) y sostené la racha con amigos.</p>
     <div class="chips" style="flex-wrap:wrap">${FG_HABITS.map(([k, e, l]) => `<a class="chip" style="text-decoration:none" href="${fueguitosURL(k)}" target="_blank" rel="noopener">${e} ${l}</a>`).join('')}</div>
@@ -3012,6 +3043,7 @@ async function pushState(){
 const pushSave = (sub) => { const j = sub.toJSON(); return rpc('fc_push_subscribe', { ...P(), p_endpoint: j.endpoint, p_p256dh: j.keys.p256dh, p_auth: j.keys.auth }); };
 // Al entrar: averigua el estado y, si ya estaba activado, vuelve a anotar el celu a esta cuenta.
 async function pushCheck(){
+  if (S.demo){ S.push = 'no'; return; }
   S.push = await pushState();
   if (S.push === 'on') pushSub().then(s => s && pushSave(s)).catch(() => {});
 }
@@ -3053,9 +3085,9 @@ function profileSheet(){
       ${S.push === 'on' ? '<button class="btn ghost" id="pf-push">🔔 Avisos activados · apagar</button>' : S.push === 'off' ? '<button class="btn ghost" id="pf-push">🔕 Activar avisos al celu</button>' : S.push === 'ios' ? '<p class="small muted">📲 Para recibir avisos en iPhone, instalá la app: Compartir ⬆️ → Agregar a inicio.</p>' : S.push === 'denied' ? '<p class="small muted">🔕 Los avisos están bloqueados para esta página. Se activan desde los ajustes del navegador.</p>' : ''}
       ${!S.me.user.has_pin ? '<button class="btn" id="pf-pin">🔒 Crear PIN para entrar desde otro celu</button>' : ''}
     </div>
-    <div class="card section" style="border-color:#FF7A1A"><b>🔥 Fueguitos</b><p class="muted small" style="margin:4px 0 10px">Tus hábitos con racha: dormir, hidratarte, entrenar. Es la misma cuenta, entrás directo.</p>
+    ${S.demo ? '' : `<div class="card section" style="border-color:#FF7A1A"><b>🔥 Fueguitos</b><p class="muted small" style="margin:4px 0 10px">Tus hábitos con racha: dormir, hidratarte, entrenar. Es la misma cuenta, entrás directo.</p>
       <a class="btn sm" style="width:100%;text-decoration:none;background:#FF7A1A;box-shadow:0 3px 0 #C24E00" href="${fueguitosURL()}" target="_blank" rel="noopener">Ir a Fueguitos</a>
-      <div class="chips" style="flex-wrap:wrap;margin-top:10px">${FG_HABITS.slice(0, 4).map(([k, e, l]) => `<a class="chip" style="text-decoration:none" href="${fueguitosURL(k)}" target="_blank" rel="noopener">＋ ${e} ${l}</a>`).join('')}</div></div>
+      <div class="chips" style="flex-wrap:wrap;margin-top:10px">${FG_HABITS.slice(0, 4).map(([k, e, l]) => `<a class="chip" style="text-decoration:none" href="${fueguitosURL(k)}" target="_blank" rel="noopener">＋ ${e} ${l}</a>`).join('')}</div></div>`}
     <div class="row section" style="justify-content:space-around"><button class="link muted" id="pf-leave">Salir de ${esc(t.name)}</button><button class="link danger" id="pf-out">Cerrar sesión</button></div>`);
   const on = (s, f) => { const e = $(s, el); if (e) e.onclick = () => { closeSheet(); setTimeout(f, 80); }; };
   on('#pf-card', () => playerSheet(meId()));
