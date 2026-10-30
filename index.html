@@ -248,6 +248,19 @@ table.pl td.me{font-weight:800}
 .tok.hurt .dot{background:var(--coral);color:#fff}
 .tok .nm{font-size:12px;font-weight:800;color:#fff;background:rgba(0,0,0,.45);padding:1px 6px;border-radius:6px;max-width:76px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tok.drag{z-index:5}
+.mc{--c1:#E3EAE5;--c2:#A9B8AE;--ink:#1D2A22;position:relative;width:48px;height:60px;border-radius:9px;background:linear-gradient(155deg,var(--c1),var(--c2));color:var(--ink);box-shadow:0 3px 0 rgba(0,0,0,.28);border:2px solid rgba(255,255,255,.9);overflow:hidden}
+.mc::before{content:"";position:absolute;inset:0;background:repeating-linear-gradient(115deg,rgba(255,255,255,.12) 0 6px,transparent 6px 13px)}
+.mc.bronce{--c1:#E6B98C;--c2:#B57B45;--ink:#3A2210}.mc.plata{--c1:#F1F4F6;--c2:#A9B6BF;--ink:#1E2A33}.mc.oro{--c1:#FCE38A;--c2:#D9A520;--ink:#3B2A00}.mc.elite{--c1:#1A5C35;--c2:#0B2A18;--ink:#F4F9D2}
+.mc-ov{position:absolute;left:4px;top:2px;font-family:var(--f-num);font-weight:900;font-size:16px;line-height:1}.mc.elite .mc-ov{color:var(--bib)}
+.mc-pos{position:absolute;left:4px;top:17px;font-weight:800;font-size:8px;letter-spacing:.04em}
+.mc-n{position:absolute;right:4px;bottom:3px;font-family:var(--f-num);font-weight:900;font-size:22px;line-height:1}
+.tok .mc + .nm{margin-top:1px;max-width:72px}
+.tok.hurt .mc{filter:grayscale(.8)}
+.tok.note .mc::after{content:"";position:absolute;right:2px;top:2px;width:9px;height:9px;border-radius:50%;background:var(--sky);border:2px solid #fff}
+.tok.drag .mc{transform:scale(1.1)}
+.tok.c-voy .mc{box-shadow:0 0 0 3px #1FA84F,0 3px 0 rgba(0,0,0,.28)}.tok.c-no .mc{box-shadow:0 0 0 3px #E5484D,0 3px 0 rgba(0,0,0,.28)}.tok.c-duda .mc{box-shadow:0 0 0 3px #F5A524,0 3px 0 rgba(0,0,0,.28)}.tok.c-none .mc{box-shadow:0 0 0 3px #C9D3CC,0 3px 0 rgba(0,0,0,.28)}
+.tok.c-no .mc{filter:saturate(.5)}
+.tok.c-no .nm{background:#E5484D}.tok.c-voy .nm{background:#167A3A}.tok.c-duda .nm{background:#B97400}
 .tok.c-voy .dot{background:#1FA84F;color:#fff}.tok.c-no .dot{background:#E5484D;color:#fff}.tok.c-duda .dot{background:#F5A524;color:#2a1a00}.tok.c-none .dot{background:#C9D3CC;color:#33433a}
 i.lg{display:inline-block;width:11px;height:11px;border-radius:50%;margin-right:5px;vertical-align:-1px}i.lg.c-voy{background:#1FA84F}i.lg.c-no{background:#E5484D}i.lg.c-duda{background:#F5A524}i.lg.c-none{background:#C9D3CC}
 .pill.c-voy{background:#DDF5E4;color:#0d5a28}.pill.c-no{background:#FDE2E2;color:#8f1d20}.pill.c-duda{background:#FFF0D1;color:#6b4300}.pill.c-none{background:var(--line);color:var(--ink)}
@@ -427,10 +440,10 @@ const FORMATIONS = {
 const FORMATS = [[5,'Fútbol 5'],[7,'Fútbol 7'],[8,'Fútbol 8'],[11,'Fútbol 11']];
 function formationSlots(f){
   const rows = f.split('-').map(Number);
-  const out = [{ x: 50, y: 91, gk: true }];
+  const out = [{ x: 50, y: 90, gk: true }];
   const n = rows.length;
   rows.forEach((cnt, i) => {
-    const y = n === 1 ? 50 : 76 - i * (60 / (n - 1));
+    const y = n === 1 ? 50 : 71 - i * (57 / (n - 1)); // lugar para las cartitas: el arquero no se pisa con la defensa
     for (let j = 0; j < cnt; j++){
       const span = cnt === 1 ? 0 : Math.min(80, 22 * (cnt - 1));
       const x = cnt === 1 ? 50 : 50 - span/2 + j * (span / (cnt - 1));
@@ -636,7 +649,7 @@ const pinInput = (id) => `<input class="input" id="${id}" type="password" inputm
 // Todo pasa en el celu (demo.js): se puede tocar cualquier cosa y no se guarda nada en la base.
 async function startDemo(role){
   try {
-    if (!window.DEMO) await new Promise((ok, ko) => { const sc = document.createElement('script'); sc.src = 'demo.js?v=1'; sc.onload = ok; sc.onerror = ko; document.head.appendChild(sc); });
+    if (!window.DEMO) await new Promise((ok, ko) => { const sc = document.createElement('script'); sc.src = 'demo.js?v=2'; sc.onload = ok; sc.onerror = ko; document.head.appendChild(sc); });
   } catch(e){ toast('No se pudo abrir el ejemplo. Revisá tu internet.'); return; }
   S.demo = true; S.token = 'demo'; S.teamId = 'demo'; S.push = 'no'; PZ = null; S.gateLater = {}; S.matchId = null; S.trainId = null;
   DEMO.setRole(role); S.tab = 'inicio';
@@ -1360,7 +1373,10 @@ function rsvpLegend(map, ids){
 function tokHTML(s, i, notes = {}, map = null){
   const m = s.m && member(s.m);
   const cls = ['tok', s.gk ? 'gk' : '', !m ? 'empty' : '', m && m.status !== 'ok' && !map ? 'hurt' : '', m && notes[m.id] ? 'note' : '', m ? rsvpCls(map, m.id) : ''].join(' ');
-  return `<div class="${cls}" data-i="${i}" style="left:${s.x}%;top:${s.y}%"><div class="dot">${m ? (m.number ?? esc(initials(m.name))) : '+'}</div>${m ? `<div class="nm">${esc(m.name)}</div>` : ''}</div>`;
+  if (!m) return `<div class="${cls}" data-i="${i}" style="left:${s.x}%;top:${s.y}%"><div class="dot">+</div></div>`;
+  // La cartita del jugador: media, posición y número, con el color de su nivel
+  const pos = (m.positions || [])[0] || (s.gk ? 'ARQ' : '');
+  return `<div class="${cls}" data-i="${i}" style="left:${s.x}%;top:${s.y}%"><div class="mc ${tier(m.overall)}">${m.overall != null ? `<span class="mc-ov">${m.overall}</span>` : ''}${pos ? `<span class="mc-pos">${pos}</span>` : ''}<b class="mc-n">${m.number ?? esc(initials(m.name))}</b></div><div class="nm">${esc(m.name)}</div></div>`;
 }
 // Qué cambia la propuesta respecto del equipo que está armado
 function tipDiff(t){
@@ -1471,7 +1487,7 @@ function renderPizarra(){
   $('#main').innerHTML = `
     ${plSeg('pizarra')}<div class="row between" style="margin-bottom:10px"><h1>Pizarra</h1><button class="btn ghost sm" id="pz-img">📤 Compartir</button></div>
     ${dt && T.lineups.length ? `<div class="chips scroll" style="margin-bottom:10px">${T.lineups.map(l => `<button class="chip ${l.id === PZ.id ? 'on' : ''}" data-l="${l.id}">${esc(l.name)}</button>`).join('')}<button class="chip" id="pz-new">＋ Nuevo</button></div>` : ''}
-    ${sug ? `<div class="banner sky" style="margin-bottom:10px">✏️ <span><b>Estás armando tu propuesta.</b> Tocá un círculo para cambiar quién va o arrastralo. El equipo del DT no se toca.</span></div>
+    ${sug ? `<div class="banner sky" style="margin-bottom:10px">✏️ <span><b>Estás armando tu propuesta.</b> Tocá una carta para cambiar quién va o arrastrala. El equipo del DT no se toca.</span></div>
       <div class="grid2" style="margin-bottom:12px"><button class="btn sm" style="width:100%" id="sg-send">💡 Mandar</button><button class="btn ghost sm" style="width:100%" id="sg-cancel">Cancelar</button></div>`
       : !dt ? `<p class="muted small" style="margin:-4px 0 10px">${esc(PZ.name)} · ${PZ.formation}</p>` : ''}
     ${myNote ? `<div class="banner sky" style="margin-bottom:10px">📌 <span><b>Indicación para vos:</b> ${esc(myNote)}</span></div>` : ''}
@@ -1479,7 +1495,7 @@ function renderPizarra(){
     ${edit ? `<div class="chips scroll" style="margin-bottom:12px">${forms.map(f => `<button class="chip ${f === PZ.formation ? 'on' : ''}" data-f="${f}">${f}</button>`).join('')}</div>` : ''}
     ${map ? `<p class="small muted" style="margin:-4px 0 2px">Colores según la convocatoria vs ${esc(nx.opponent)}:</p>${rsvpLegend(map, PZ.slots.map(s => s.m).filter(Boolean))}` : ''}
     <div class="pitch${edit ? '' : ' ro'}${sug ? ' sug' : ''}" id="pitch" style="margin-top:6px">${PITCH_LINES}${PZ.slots.map((s, i) => tokHTML(s, i, PZ.notes, map)).join('')}</div>
-    ${edit ? `<p class="tiny muted" style="margin-top:6px">Tocá un círculo para elegir quién va. Arrastralo para moverlo.</p>` : ''}
+    ${edit ? `<p class="tiny muted" style="margin-top:6px">Tocá una carta para elegir quién va. Arrastrala para moverla.</p>` : ''}
     <div class="section"><div class="section-title"><h2>Suplentes</h2><span class="small muted">${bench.length}</span></div>
       <div class="bench">${bench.length ? bench.map(m => `<span class="pill ${map ? rsvpCls(map, m.id) : m.status !== 'ok' ? 'coral' : ''}">${m.number != null ? `<b>${m.number}</b>` : ''} ${esc(m.name)} ${m.status !== 'ok' ? STATUS[m.status][0] : ''}</span>`).join('') : '<span class="muted small">Están todos adentro</span>'}</div></div>
     ${dt ? `<div class="section stack">
