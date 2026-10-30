@@ -653,7 +653,7 @@ const pinInput = (id) => `<input class="input" id="${id}" type="password" inputm
 // Todo pasa en el celu (demo.js): se puede tocar cualquier cosa y no se guarda nada en la base.
 async function startDemo(role){
   try {
-    if (!window.DEMO) await new Promise((ok, ko) => { const sc = document.createElement('script'); sc.src = 'demo.js?v=2'; sc.onload = ok; sc.onerror = ko; document.head.appendChild(sc); });
+    if (!window.DEMO) await new Promise((ok, ko) => { const sc = document.createElement('script'); sc.src = 'demo.js?v=3'; sc.onload = ok; sc.onerror = ko; document.head.appendChild(sc); });
   } catch(e){ toast('No se pudo abrir el ejemplo. Revisá tu internet.'); return; }
   S.demo = true; S.token = 'demo'; S.teamId = 'demo'; S.push = 'no'; PZ = null; S.gateLater = {}; S.matchId = null; S.trainId = null;
   DEMO.setRole(role); S.tab = 'inicio';
@@ -976,6 +976,29 @@ function boardHomeHTML(nx){
     ${bench.length ? `<div class="mini" style="margin:10px 0 6px">SUPLENTES</div><div class="bench">${bench.map(m => `<span class="pill ${rsvpCls(map, m.id)}">${m.number != null ? `<b>${m.number}</b> ` : ''}${esc(m.name)}</span>`).join('')}</div>` : ''}
   </div>`;
 }
+// El próximo rival en Inicio: tabla, chances y cómo le fue a cada uno contra los mismos equipos
+function rivalPreviewHTML(nx){
+  const lm = lgMatchOf(nx); if (!lm) return '';
+  const L = LG(), me = L.team_ext_id, rid = isUs(lm.home_id) ? lm.away_id : lm.home_id;
+  const t = lgTeam(rid), us = L.standings.find(s => isUs(s.id)), e = lgExpect(us, t);
+  const ourBy = {}; lgPlayed(me).forEach(m => { const v = lgView(m, me); ourBy[v.oppId] = v; });
+  const common = lgPlayed(rid).map(m => lgView(m, rid)).filter(v => v.oppId !== me && ourBy[v.oppId]);
+  const pts = (v) => v.gf > v.gc ? 3 : v.gf === v.gc ? 1 : 0;
+  const ptsUs = common.reduce((a, v) => a + pts(ourBy[v.oppId]), 0), ptsThem = common.reduce((a, v) => a + pts(v), 0);
+  const cls = (v) => ({ G: 'r-hi', E: 'r-ok', P: 'r-lo' }[lgRes(v)]);
+  const side = (name, s, id) => `<div style="flex:1;min-width:0"><b class="ell" style="display:block">${esc(name)}</b><span class="small muted">${s ? `${s.pos}º · ${s.pts} pts` : ''}</span><div style="margin-top:4px">${formDots(lgForm(id))}</div></div>`;
+  return `<div class="card section"><div class="row between"><h3>🔎 El rival</h3><button class="link" id="rp-open">Informe completo</button></div>
+    <div class="row" style="gap:12px;margin-top:8px;align-items:flex-start">${side(S.T.team.name, us, me)}<span class="mini" style="margin-top:4px">VS</span>${side(t.name, t, rid)}</div>
+    ${e ? `<div style="display:flex;height:12px;border-radius:8px;overflow:hidden;margin:12px 0 6px"><span style="width:${pct(e.w)};background:var(--grass)"></span><span style="width:${pct(e.d)};background:var(--gold)"></span><span style="width:${pct(e.l)};background:var(--coral)"></span></div>
+      <div class="row between small"><span>Ganar <b>${pct(e.w)}</b></span><span>Empate <b>${pct(e.d)}</b></span><span>Perder <b>${pct(e.l)}</b></span></div>
+      <p class="tiny muted" style="margin-top:4px">Resultado esperado ${fmt1(e.a)} a ${fmt1(e.b)}, según los goles de cada uno en el torneo.</p>` : ''}
+    ${common.length ? `<div class="mini" style="margin:12px 0 6px">CONTRA LOS QUE YA JUGAMOS</div>
+      <div class="sheetwrap"><table class="pl tight"><thead><tr><th class="l">Rival</th><th>${esc(S.T.team.name)}</th><th>${esc(t.name)}</th></tr></thead><tbody>
+      ${common.map(v => `<tr><td class="l">${esc(v.opp)}</td><td><span class="rate ${cls(ourBy[v.oppId])}" style="font-size:14px">${ourBy[v.oppId].gf}-${ourBy[v.oppId].gc}</span></td><td><span class="rate ${cls(v)}" style="font-size:14px">${v.gf}-${v.gc}</span></td></tr>`).join('')}
+      </tbody></table></div>
+      <p class="small" style="margin-top:6px">Contra esos equipos sacamos <b>${ptsUs}</b> puntos y ellos <b>${ptsThem}</b>.</p>` : ''}
+  </div>`;
+}
 function renderInicio(){
   const T = S.T, m = member(meId()), nx = nextMatch();
   const mine = nx && T.callups.find(c => c.match_id === nx.id && c.member_id === meId());
@@ -1006,6 +1029,7 @@ function renderInicio(){
     </div>` : `<div class="card empty"><div class="big">🗓️</div><h3>No hay partidos en agenda</h3><p class="muted small" style="margin-top:4px">${isAdmin() ? 'Cargá el próximo y el plantel confirma desde acá.' : 'Cuando el DT cargue el próximo, confirmás desde acá.'}</p>${isAdmin() ? '<button class="btn sm" id="nx-new" style="margin-top:12px">＋ Cargar partido</button>' : ''}</div>`}
 
     ${nx && !isPicadito() ? boardHomeHTML(nx) : ''}
+    ${nx && !isPicadito() && LG() ? rivalPreviewHTML(nx) : ''}
     ${postMatchHTML()}
     ${pushCardHTML()}
     ${teamForm().length ? `<div class="card section row between" style="padding:12px 16px"><span><b style="display:block">Últimos ${teamForm().length}</b><span class="mini">${esc(S.T.team.name)}${LG() && LG().standings.find(s => isUs(s.id)) ? ` · ${LG().standings.find(s => isUs(s.id)).pos}º en la tabla` : ''}</span></span>${formDots(teamForm(), true)}</div>` : ''}
@@ -1031,6 +1055,7 @@ function renderInicio(){
   $$('#hb-open, #hb-pitch').forEach(b => b.onclick = () => { S.tab = 'pizarra'; render(); scrollTo(0,0); });
   const npz = $('#nx-pz'); if (npz) npz.onclick = () => { S.tab = 'pizarra'; render(); scrollTo(0,0); };
   $$('[data-post]').forEach(b => b.onclick = () => { const [k, id] = b.dataset.post.split(':'); k === 'res' ? resultSheet(id) : rateSheet(id); });
+  const rp = $('#rp-open'); if (rp) rp.onclick = () => { const lm = lgMatchOf(nx); rivalSheet(isUs(lm.home_id) ? lm.away_id : lm.home_id); };
   const nr = $('#nx-rv'); if (nr) nr.onclick = () => { const lm = lgMatchOf(nx); rivalSheet(isUs(lm.home_id) ? lm.away_id : lm.home_id); };
   const nn = $('#nx-new'); if (nn) nn.onclick = () => matchEditSheet(null);
   const sf = $('#st-fix'); if (sf) sf.onclick = () => statusSheet(m);
@@ -1478,6 +1503,59 @@ function tipReplySheet(id){
   $('#tr-ok', el).onclick = () => go(t.status); $('#tr-used', el).onclick = () => go('usada');
 }
 
+/* ============ Cambios sugeridos ============ */
+// Con las posiciones de cada uno (la principal y las que también juega), su carta y si confirmó, la app propone quién entra por quién.
+const POS_GROUP = { ARQ: 0, DEF: 1, LAT: 1, VOL: 2, ENG: 2, EXT: 3, DEL: 3 };
+function slotPos(s){ const m = s.m && member(s.m); if (m && (m.positions || [])[0]) return m.positions[0]; if (s.gk) return 'ARQ'; return s.y > 58 ? 'DEF' : s.y > 30 ? 'VOL' : 'DEL'; }
+function posFit(m, pos){
+  const ps = m.positions || [];
+  if (!ps.length) return pos === 'ARQ' ? 0 : 0.8;
+  if (ps[0] === pos) return 3;
+  if (ps.includes(pos)) return 2.5;
+  if (pos === 'ARQ' || ps[0] === 'ARQ') return 0;
+  const d = Math.min(...ps.filter(p => POS_GROUP[p] != null).map(p => Math.abs(POS_GROUP[p] - POS_GROUP[pos])));
+  return d === 0 ? 1.6 : d === 1 ? 0.6 : 0;
+}
+function subOptions(slot, bench, map){
+  const pos = slotPos(slot);
+  return bench.map(m => ({ m, fit: posFit(m, pos), conf: map ? ({ voy: 1, duda: 0.4 }[map[m.id]] ?? 0) : 1 }))
+    .filter(o => o.fit > 0).map(o => ({ ...o, score: o.fit * 10 + (o.m.overall ?? 60) / 10 + o.conf * 4 })).sort((a,b) => b.score - a.score);
+}
+function subsPlan(map){
+  const on = new Set(PZ.slots.map(s => s.m).filter(Boolean));
+  let bench = [...players(), ...guests()].filter(m => !on.has(m.id) && m.status === 'ok' && (!map || map[m.id] !== 'no_voy'));
+  const urgent = [], perSlot = [];
+  PZ.slots.forEach((s, i) => {
+    const m = s.m && member(s.m);
+    const why = !m ? 'Lugar vacío' : m.status !== 'ok' ? STATUS[m.status][1] : map && map[m.id] === 'no_voy' ? 'No va' : null;
+    const opts = subOptions(s, bench, map);
+    if (why && opts[0]){ urgent.push({ i, m, why, pos: slotPos(s), o: opts[0] }); bench = bench.filter(b => b.id !== opts[0].m.id); }
+    else if (m && !why) perSlot.push({ i, m, pos: slotPos(s), opts });
+  });
+  perSlot.forEach(x => x.opts = x.opts.filter(o => bench.includes(o.m)).slice(0, 2));
+  return { urgent, perSlot: perSlot.filter(x => x.opts.length) };
+}
+const posTxt = (m) => (m.positions || []).join('/') || 'sin posición';
+const confTxt = (map, id) => !map ? '' : { voy: ' · confirmó ✅', duda: ' · duda 🤔', no_voy: ' · no va' }[map[id]] || ' · no respondió';
+function subsHTML(map){
+  if (!PZ || PZ.mode === 'sug') return '';
+  const { urgent, perSlot } = subsPlan(map), dt = canBoard();
+  if (!urgent.length && !perSlot.length) return '';
+  return `<div class="section"><div class="section-title"><h2>🔄 Cambios sugeridos</h2></div>
+    ${urgent.length ? `<div class="list" style="margin-bottom:10px">${urgent.map(u => `<div class="lrow" style="padding:9px 12px"><span style="font-size:20px">⚠️</span><span class="t"><b>${u.m ? esc(u.m.name) + ' → ' : ''}${esc(u.o.m.name)}</b><small>${esc(u.why)}${u.m ? '' : ' de ' + u.pos} · ${esc(u.o.m.name)} juega de ${posTxt(u.o.m)}${u.o.m.overall != null ? ' · ' + u.o.m.overall : ''}${confTxt(map, u.o.m.id)}</small></span>${dt ? `<button class="btn sm" data-sub="${u.i}:${u.o.m.id}">Cambiar</button>` : ''}</div>`).join('')}</div>` : ''}
+    ${perSlot.length ? `<details ${urgent.length ? '' : 'open'}><summary class="small" style="font-weight:800;cursor:pointer;margin-bottom:8px">Durante el partido: si hay que sacar a…</summary>
+      <div class="card" style="padding:4px 12px">${perSlot.map(x => `<div class="statrow" style="gap:8px"><span class="grow"><b>${esc(x.m.name)}</b> <span class="mini">${x.pos}</span></span><span class="row" style="gap:6px;flex-wrap:wrap;justify-content:flex-end">${x.opts.map(o => `<button class="chip ${dt ? '' : 'ro'}" ${dt ? `data-sub="${x.i}:${o.m.id}"` : 'disabled'} title="${esc(posTxt(o.m))}">↑ ${esc(o.m.name)}${o.m.overall != null ? ` <span class="mini">${o.m.overall}</span>` : ''}</button>`).join('')}</span></div>`).join('')}</div>
+      <p class="tiny muted" style="margin-top:6px">Entra el que mejor encaja en ese puesto según sus posiciones, su carta y si confirmó.${dt ? ' Tocá un nombre para hacer el cambio en la pizarra.' : ''}</p></details>` : ''}
+  </div>`;
+}
+function bindSubs(root){
+  $$('[data-sub]', root).forEach(b => b.onclick = () => {
+    const [i, id] = b.dataset.sub.split(':'), s = PZ.slots[+i], out = s.m && member(s.m), inn = member(id);
+    s.m = id; PZ.dirty = true; renderPizarra();
+    toast(`${out ? `Sale ${out.name}, entra ${inn.name}` : `Entra ${inn.name}`}. Tocá Guardar para que lo vea el equipo.`, 3500);
+  });
+}
+
 function renderPizarra(){
   pzInit();
   const T = S.T, dt = canBoard(), sug = PZ.mode === 'sug' && canSuggest(), edit = dt || sug;
@@ -1505,7 +1583,8 @@ function renderPizarra(){
     <div class="pitch${edit ? '' : ' ro'}${sug ? ' sug' : ''}" id="pitch" style="margin-top:6px">${PITCH_LINES}${PZ.slots.map((s, i) => tokHTML(s, i, PZ.notes, map)).join('')}</div>
     ${edit ? `<p class="tiny muted" style="margin-top:6px">Tocá una carta para elegir quién va. Arrastrala para moverla.</p>` : ''}
     <div class="section"><div class="section-title"><h2>Suplentes</h2><span class="small muted">${bench.length}</span></div>
-      <div class="bench">${bench.length ? bench.map(m => `<span class="pill ${map ? rsvpCls(map, m.id) : m.status !== 'ok' ? 'coral' : ''}">${m.number != null ? `<b>${m.number}</b>` : ''} ${esc(m.name)} ${m.status !== 'ok' ? STATUS[m.status][0] : ''}</span>`).join('') : '<span class="muted small">Están todos adentro</span>'}</div></div>
+      <div class="bench">${bench.length ? bench.map(m => `<span class="pill ${map ? rsvpCls(map, m.id) : m.status !== 'ok' ? 'coral' : ''}" title="${esc(posTxt(m))}">${m.number != null ? `<b>${m.number}</b>` : ''} ${esc(m.name)} ${m.status !== 'ok' ? STATUS[m.status][0] : ''}</span>`).join('') : '<span class="muted small">Están todos adentro</span>'}</div></div>
+    ${subsHTML(map)}
     ${dt ? `<div class="section stack">
       <label class="field"><span>Nombre de este equipo</span><input class="input" id="pz-name" maxlength="40" value="${esc(PZ.name)}" placeholder="Ej: El de gala"></label>
       <button class="btn" id="pz-save" ${PZ.dirty || !PZ.id ? '' : 'disabled'}>${PZ.id ? 'Guardar cambios' : 'Guardar equipo'}</button>
@@ -1514,6 +1593,7 @@ function renderPizarra(){
     </div><aside>${tipsHTML()}</aside></div>`;
   $('#main').classList.add('pz');
   bindTips($('#main'));
+  bindSubs($('#main'));
   const sgs = $('#sg-send'); if (sgs) sgs.onclick = () => tipSendSheet(true);
   const sgc = $('#sg-cancel'); if (sgc) sgc.onclick = () => { pzLeaveSug(); renderPizarra(); };
   $$('[data-f]').forEach(b => b.onclick = () => { pzSetFormation(b.dataset.f); renderPizarra(); });
@@ -2272,6 +2352,7 @@ function cardHTML(m, big = false){
     ${m.status !== 'ok' ? `<span class="pc-st">${STATUS[m.status][0]}</span>` : ''}
     <div class="pc-face">${m.number ?? esc(initials(m.name))}</div>
     <div class="pc-name ell">${esc(m.name)}</div>
+    ${(m.positions || []).length > 1 ? `<div class="pc-sub" style="margin-top:0">${m.positions.slice(1, 4).join(' · ')}</div>` : ''}
     ${big ? `<div class="pc-attrs">${at.map(([k,l]) => `<span>${l.slice(0,3).toUpperCase()} <b>${m.attrs && m.attrs[k] != null ? m.attrs[k] : '–'}</b></span>`).join('')}</div>` : `<div class="pc-sub">${m.role === 'dt' || m.role === 'ayudante' ? ROLE[m.role] : m.number != null ? '#' + m.number : ''}${!m.claimed ? ' · sin entrar' : ''}</div>`}
   </div>`;
 }
@@ -2344,29 +2425,34 @@ function playerSheet(id){
 // Armar la carta: posición, número y 4 atributos. El puntaje general es el promedio.
 function cardSheet(id){
   const m = member(id), self = id === meId();
-  let pos = (m.positions || [])[0] || null;
+  let pos = (m.positions || [])[0] || null, also = (m.positions || []).slice(1);
   const vals = {}; const sug = suggested(id);
+  const allPos = () => pos ? [pos, ...also.filter(x => x !== pos)] : also;
   const at = () => pos === 'ARQ' ? ATTRS_GK : ATTRS;
   const ovOf = () => { const v = at().map(([k]) => vals[k]).filter(x => x != null); return v.length ? Math.round(v.reduce((a,b) => a + b, 0) / v.length) : null; };
   at().forEach(([k]) => { vals[k] = m.attrs && m.attrs[k] != null ? m.attrs[k] : (sug || 65); });
   const el = openSheet(`<h2>${self ? 'Mi carta' : 'Carta de ' + esc(m.name)}</h2>
     <p class="muted">${self && !isDT() ? 'Con criterio, eh: el DT la ve y la puede corregir.' : 'Movés las barras y listo.'}${sug != null ? ` Según sus partidos, la app sugiere <b>${sug}</b>.` : ''}</p>
     <div class="section" id="cs-prev"></div>
-    <div class="field section"><span>Posición</span><div class="chips" id="cs-p">${POS.map(([k,l]) => `<button type="button" class="chip ${pos === k ? 'on' : ''}" data-k="${k}" title="${l}">${k}</button>`).join('')}</div></div>
+    <div class="field section"><span>Posición principal</span><div class="chips" id="cs-p">${POS.map(([k,l]) => `<button type="button" class="chip ${pos === k ? 'on' : ''}" data-k="${k}" title="${l}">${k}</button>`).join('')}</div></div>
+    <div class="field section"><span>También juega de</span><div class="chips" id="cs-al">${POS.map(([k,l]) => `<button type="button" class="chip ${also.includes(k) && k !== pos ? 'on' : ''}" data-k="${k}" title="${l}">${k}</button>`).join('')}</div><div class="hint">Sirve para que la app sugiera los cambios durante el partido.</div></div>
     <label class="field section"><span>Número de camiseta</span><input class="input" id="cs-n" type="number" inputmode="numeric" min="0" max="99" value="${m.number ?? ''}" style="max-width:120px"></label>
     <div class="stack section" id="cs-a"></div>
     <button class="btn section" id="cs-ok">Guardar carta</button>`);
-  const prev = () => { const ov = ovOf(); $('#cs-prev', el).innerHTML = cardHTML({ ...m, positions: pos ? [pos, ...(m.positions || []).filter(x => x !== pos)] : m.positions, number: $('#cs-n', el) ? ($('#cs-n', el).value === '' ? null : +$('#cs-n', el).value) : m.number, overall: ov, attrs: { ...vals } }, true); };
+  const prev = () => { const ov = ovOf(); $('#cs-prev', el).innerHTML = cardHTML({ ...m, positions: allPos(), number: $('#cs-n', el) ? ($('#cs-n', el).value === '' ? null : +$('#cs-n', el).value) : m.number, overall: ov, attrs: { ...vals } }, true); };
   const drawA = () => {
     $('#cs-a', el).innerHTML = at().map(([k, l]) => `<label class="field"><span style="display:flex;justify-content:space-between">${l} <b class="num" style="font-size:20px" data-o="${k}">${vals[k]}</b></span><input type="range" class="range" min="40" max="99" value="${vals[k]}" data-k="${k}"></label>`).join('');
     $$('#cs-a input', el).forEach(i => i.oninput = () => { vals[i.dataset.k] = +i.value; $(`[data-o="${i.dataset.k}"]`, el).textContent = i.value; prev(); });
   };
-  $$('#cs-p .chip', el).forEach(b => b.onclick = () => { pos = b.dataset.k; $$('#cs-p .chip', el).forEach(x => x.classList.toggle('on', x === b)); at().forEach(([k]) => { if (vals[k] == null) vals[k] = sug || 65; }); drawA(); prev(); });
+  const drawAlso = () => $$('#cs-al .chip', el).forEach(x => { x.classList.toggle('on', also.includes(x.dataset.k) && x.dataset.k !== pos); x.disabled = x.dataset.k === pos; });
+  $$('#cs-al .chip', el).forEach(b => b.onclick = () => { const k = b.dataset.k; also = also.includes(k) ? also.filter(x => x !== k) : [...also, k]; drawAlso(); prev(); });
+  drawAlso();
+  $$('#cs-p .chip', el).forEach(b => b.onclick = () => { pos = b.dataset.k; also = also.filter(x => x !== pos); drawAlso(); $$('#cs-p .chip', el).forEach(x => x.classList.toggle('on', x === b)); at().forEach(([k]) => { if (vals[k] == null) vals[k] = sug || 65; }); drawA(); prev(); });
   $('#cs-n', el).oninput = prev;
   drawA(); prev();
   $('#cs-ok', el).onclick = async () => {
     const attrs = Object.fromEntries(at().map(([k]) => [k, vals[k]]));
-    const p = { attrs, overall: ovOf(), number: $('#cs-n', el).value, positions: pos ? [pos, ...(m.positions || []).filter(x => x !== pos)] : (m.positions || []) };
+    const p = { attrs, overall: ovOf(), number: $('#cs-n', el).value, positions: allPos() };
     try { await rpc('fc_member_save', { ...P(), p_team: S.teamId, p_id: id, p }); closeSheet(); await refresh(); toast('Carta guardada 🃏'); }
     catch(e){ toast(e.message); }
   };

@@ -31,7 +31,8 @@
       : { vel: int(base - 12, base + 12), tec: int(base - 10, base + 10), fis: int(base - 10, base + 10), def: pos === 'DEF' || pos === 'LAT' || pos === 'VOL' ? int(base - 4, base + 12) : int(base - 25, base - 5) };
     Object.keys(attrs).forEach(k => attrs[k] = Math.max(40, Math.min(95, attrs[k])));
     const ov = Math.round(Object.values(attrs).reduce((a, b) => a + b, 0) / 4);
-    return { id: 'm_' + name.toLowerCase(), name, role: 'jugador', plays: true, number, positions: [pos], foot, status: name === 'Beto' ? 'lesionado' : name === 'Santi' ? 'ausente' : 'ok',
+    const ALSO = { Fede: ['DEF'], Mati: ['VOL'], Pipa: ['DEF'], Lucho: ['VOL', 'EXT'], Tomi: ['DEL'], Nacho: ['LAT'], Facu: ['DEF', 'VOL'], Rama: ['LAT'], Juanchi: ['EXT'], Mono: ['EXT'], Chino: ['ENG'] };
+    return { id: 'm_' + name.toLowerCase(), name, role: 'jugador', plays: true, number, positions: [pos, ...(ALSO[name] || [])], foot, status: name === 'Beto' ? 'lesionado' : name === 'Santi' ? 'ausente' : 'ok',
       status_until: name === 'Beto' ? day(now.getTime() + 12 * 864e5) : null, status_note: name === 'Beto' ? 'Desgarro, vuelve en dos semanas' : name === 'Santi' ? 'De viaje' : null,
       claimed: !['Mono', 'Juanchi', 'Rama'].includes(name), active: true, overall: ov, attrs, guest: false, ext_player_id: 9000 + i, contact: null };
   });
