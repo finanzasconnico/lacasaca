@@ -41,3 +41,11 @@ Estas partes ya están cargadas en la base (proyecto racha-app). Quedan anotadas
   - Con el resultado cargado: a los que jugaron, para que carguen goles, asistencias y tarjetas.
   - Entrenamiento nuevo: a todo el plantel. Un plan semanal llega como un solo aviso (cron `casaca-avisos-entrenos`, cada minuto).
   - Alguien hizo el entrenamiento: a los que todavía no lo hicieron. El aviso se reemplaza en el celu, no se acumula.
+
+## Trayectoria de cada jugador
+- `fc_members.career` (jsonb): torneos, partidos, goles, tarjetas, títulos y la lista de torneos de su carrera, con la fuente.
+- Se ve en la ficha del jugador, en su carta y en las cartitas de la pizarra cuando no tiene atributos cargados.
+- Se cargó a mano el 31-oct con los archivos que pasó el equipo (POTRERO). La app no baja datos de POTRERO.
+
+## Ojo
+- `sql/viejo/actualizar.sql` es una versión vieja: NO correrla de nuevo, pisa funciones nuevas. Lo al día está en `sql/equipo.sql`.

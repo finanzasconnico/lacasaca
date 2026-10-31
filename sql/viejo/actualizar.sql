@@ -1,3 +1,6 @@
+-- ⚠️ NO VOLVER A CORRER. Es la versión vieja: pisa funciones que después se mejoraron (torneo, invitados, trayectoria).
+-- Las versiones al día están en sql/equipo.sql.
+
 -- La Casaca: pegar en Supabase (proyecto racha-app) → SQL Editor → Run.
 -- Agrega ayudantes y DT por partido, y las funciones que confirman asistencia,
 -- cargan números y borran partidos o equipos de la pizarra. Se puede correr más de una vez.
