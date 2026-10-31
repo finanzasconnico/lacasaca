@@ -1307,8 +1307,10 @@ function rateSheet(matchId){
   const x = S.T.matches.find(y => y.id === matchId), rater = canRate(x);
   const st = S.T.stats.filter(s => s.match_id === matchId);
   const voy = S.T.callups.filter(c => c.match_id === matchId && c.answer === 'voy').map(c => c.member_id);
-  const rows = [...players(), ...guests().filter(g => st.some(s => s.member_id === g.id))].map(m => ({ m, s: st.find(s => s.member_id === m.id) }))
-    .sort((a,b) => (b.s ? (b.s.played ? 2 : 1) : voy.includes(b.m.id) ? 1.5 : 0) - (a.s ? (a.s.played ? 2 : 1) : voy.includes(a.m.id) ? 1.5 : 0) || a.m.name.localeCompare(b.m.name));
+  // El plantel de siempre, y abajo solo los invitados que jugaron este partido (el resto se suma con el botón)
+  const rank = (o) => o.s ? (o.s.played ? 2 : 1) : voy.includes(o.m.id) ? 1.5 : 0;
+  const rows = [...players().map(m => ({ m, s: st.find(s => s.member_id === m.id) })).sort((a,b) => rank(b) - rank(a) || a.m.name.localeCompare(b.m.name)),
+    ...guests().filter(g => st.some(s => s.member_id === g.id && s.played)).map(m => ({ m, s: st.find(s => s.member_id === m.id) })).sort((a,b) => a.m.name.localeCompare(b.m.name))];
   const el = openSheet(`<h2>${rater ? 'Puntuar' : 'Cargar números'}</h2><p class="muted">vs ${esc(x.opponent)} · ${rater ? 'del 0 al 10. ' : ''}Tocá el nombre para cargar goles o tarjetas.</p>
     <div class="card section" style="padding:0 14px" id="rt">${rows.map(({ m, s }) => {
       const on = s ? s.played : voy.includes(m.id);
@@ -1316,7 +1318,7 @@ function rateSheet(matchId){
         <button class="who" data-edit="${m.id}"><span class="av" style="width:32px;height:32px;font-size:13px;background:${avColor(m.name)}">${esc(initials(m.name))}</span><span style="min-width:0"><b style="display:block">${esc(m.name)}${m.guest ? ' <span class="pill sky" style="padding:1px 6px;font-size:11px">Invitado</span>' : ''}</b><span class="mini">${s && s.played ? `⚽${s.goals} 🅰️${s.assists}${s.by_self ? ' ✍️' : ''}` : on ? 'Convocado' : 'No jugó'}</span></span></button>
         <div class="row" style="gap:6px">${!rater ? '' : stepperHTML('rt-' + m.id, s && s.dt_rating != null ? fmt1(+s.dt_rating) : '—', 'puntaje de ' + m.name)}</div>
       </div>`; }).join('')}</div>
-    <button class="btn ghost sm section" id="rt-guest" style="width:100%">＋ Sumar un invitado que jugó</button>
+    <button class="btn ghost sm section" id="rt-guest" style="width:100%">＋ Sumar un invitado${guests().length ? ' (de los ya anotados o uno nuevo)' : ''}</button>
     ${rater ? '<button class="btn section" id="rt-ok">Guardar puntajes</button>' : ''}`);
   $('#rt-guest', el).onclick = () => { closeSheet(); setTimeout(() => guestSheet(matchId), 80); };
   const limits = {}; rows.forEach(({ m }) => limits['rt-' + m.id] = [0, 10, .5, 6]);
@@ -1339,7 +1341,8 @@ function guestSheet(matchId){
   const known = matchId ? guests().filter(g => !S.T.stats.some(s => s.match_id === matchId && s.member_id === g.id && s.played)) : [];
   let pos = [];
   const el = openSheet(`<h2>Sumar invitado</h2><p class="muted">${x ? `Jugó vs ${esc(x.opponent)}. ` : ''}Queda guardado con su puntaje para volver a llamarlo cuando falte gente.</p>
-    ${known.length ? `<div class="mini section" style="margin-bottom:6px">Ya jugó antes</div><div class="list">${known.map(g => `<button class="lrow" data-g="${g.id}"><span class="av" style="background:${avColor(g.name)}">${esc(initials(g.name))}</span><span class="t"><b>${esc(g.name)}</b></span><span class="pill ok">Jugó</span></button>`).join('')}</div><div class="mini section" style="margin-bottom:6px">O uno nuevo</div>` : ''}
+    ${known.length > 5 ? `<input class="input section" id="gs-q" placeholder="🔎 Buscar entre los ${known.length} invitados" autocomplete="off">` : ''}
+    ${known.length ? `<div class="mini section" style="margin-bottom:6px">Ya anotados</div><div class="list" id="gs-list" style="max-height:46vh;overflow:auto">${known.map(g => `<button class="lrow" data-g="${g.id}"><span class="av" style="background:${avColor(g.name)}">${esc(initials(g.name))}</span><span class="t"><b>${esc(g.name)}</b>${(g.positions || []).length ? `<small>${g.positions.join(' · ')}</small>` : ''}</span><span class="pill ok">＋ Sumar</span></button>`).join('')}</div><div class="mini section" style="margin-bottom:6px">O uno nuevo</div>` : ''}
     <form class="stack ${known.length ? '' : 'section'}" id="gs">
       <label class="field"><span>Nombre o apodo</span><input class="input" id="gs-n" maxlength="30" placeholder="Ej: El primo de Ivo"></label>
       <div class="field"><span>Posición (opcional)</span><div class="chips" id="gs-p">${POS.map(([k,l]) => `<button type="button" class="chip" data-k="${k}" title="${l}">${k}</button>`).join('')}</div></div>
@@ -1354,6 +1357,7 @@ function guestSheet(matchId){
     toast('Invitado sumado 🤝');
   };
   $$('[data-g]', el).forEach(b => b.onclick = () => done(b.dataset.g).catch(e => toast(e.message)));
+  const q = $('#gs-q', el); if (q) q.oninput = () => { const t = q.value.trim().toLowerCase(); $$('[data-g]', el).forEach(b => b.hidden = t && !b.textContent.toLowerCase().includes(t)); };
   $('#gs', el).onsubmit = async (e) => {
     e.preventDefault();
     const name = $('#gs-n', el).value.trim(); if (!name) return toast('Poné el nombre');
