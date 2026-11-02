@@ -23,7 +23,7 @@
 <link rel="icon" type="image/png" href="icons/favicon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,600;12..96,700;12..96,800&family=Big+Shoulders+Display:wght@700;800;900&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700;800;900&family=Big+Shoulders+Display:wght@700;800;900&display=swap" rel="stylesheet">
 <style>
 /* Cancha de día: blanco cal, verde césped, casaca amarilla. De noche: césped bajo los reflectores. */
 :root{
@@ -352,6 +352,150 @@ table.pl .fd{width:18px;height:18px;font-size:10px}
 .photo .pd{display:flex;flex-direction:column;align-items:center;gap:4px;padding:20px;text-align:center;font-size:40px}
 .photo .pd b{font-size:16px}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+/* ================= Estilo 2 · "Tribuna" =================
+   Como las apps de resultados (FotMob, Sofascore) y las cartas de FUT/POTRERO:
+   tipografía deportiva, superficies planas, líneas finas, color con intención. */
+:root{
+  --bg:#F2F1EC; --card:#FFFFFF; --ink:#0E1512; --muted:#68716C; --line:#E2E1DA; --line2:#ECEBE5;
+  --grass:#0E7A3E; --grass-dark:#0A5E2F; --grass-soft:#E3F1E7; --grass-ink:#0A5A2D;
+  --bib:#C6F21C; --bib-ink:#2C3600;
+  --gold:#D99A00; --gold-soft:#FBF0D2; --gold-ink:#6E4B00;
+  --coral:#E5484D; --coral-dark:#B8343A; --coral-soft:#FCE7E7; --coral-ink:#8A1F24;
+  --sky:#1F6FD1; --sky-soft:#E4EEFA; --sky-ink:#174E8C;
+  --field:#FFFFFF; --nav:rgba(250,250,247,.94); --scrim:rgba(8,14,11,.55); --toast:#0E1512; --toast-ink:#FFFFFF;
+  --night:#0C1310; --night2:#14201A;
+  --pitch1:#1B8A48; --pitch2:#1F944E; --chalk:rgba(255,255,255,.8);
+  --f-body:"Archivo",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-num:"Big Shoulders Display","Archivo",system-ui,sans-serif;
+  --r:12px; --r-sm:8px;
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --bg:#090C0B; --card:#111614; --ink:#ECF1EE; --muted:#8C9690; --line:#1E2622; --line2:#171D1A;
+    --grass:#2BCB6A; --grass-dark:#1F9E52; --grass-soft:#11261A; --grass-ink:#7FE3A6;
+    --gold-soft:#2C2208; --gold-ink:#F5C84A; --coral-soft:#2D1213; --coral-ink:#FF9EA1; --sky-soft:#0F1E30; --sky-ink:#8CC2F7;
+    --field:#0D1210; --nav:rgba(9,12,11,.94); --toast:#ECF1EE; --toast-ink:#090C0B;
+    --night:#111816; --night2:#18221D;
+  }
+}
+body{font-family:var(--f-body);font-size:15.5px;letter-spacing:-.005em}
+h1{font-family:var(--f-num);font-weight:900;font-size:34px;text-transform:uppercase;letter-spacing:.01em;line-height:1}
+h2{font-size:20px;font-weight:800;letter-spacing:-.015em}
+h3{font-size:16px;font-weight:800}
+.section{margin-top:28px}
+.section-title{margin-bottom:10px;align-items:center}
+.section-title h2{font-size:12.5px;font-weight:800;text-transform:uppercase;letter-spacing:.12em;color:var(--muted)}
+.mini{font-size:11.5px;font-weight:800;text-transform:uppercase;letter-spacing:.1em;color:var(--muted)}
+.link{color:var(--grass-ink);font-weight:700;font-size:14px}
+@media (prefers-color-scheme:dark){.link{color:var(--grass)}}
+a{color:var(--grass-ink)}
+
+/* Barras */
+.status{border-bottom:1px solid var(--line)}
+.teamsel{font-size:17px;font-weight:800;letter-spacing:-.01em}
+.teamsel .role{border-radius:4px;background:var(--ink);color:var(--bg);font-size:10px;letter-spacing:.1em}
+nav.tabs{border-top:1px solid var(--line)}
+nav.tabs button{font-size:11px;font-weight:700;letter-spacing:.02em;position:relative}
+nav.tabs button svg{width:24px;height:24px;stroke-width:2}
+nav.tabs button.on{color:var(--ink)}
+nav.tabs button.on::before{content:"";position:absolute;top:0;left:30%;right:30%;height:3px;border-radius:0 0 3px 3px;background:var(--grass)}
+
+/* Botones planos */
+.btn{min-height:48px;border-radius:var(--r);box-shadow:none;font-size:16px;font-weight:700;letter-spacing:-.005em}
+.btn:active{transform:scale(.98);box-shadow:none}
+.btn.ghost{background:transparent;border:1px solid var(--line);box-shadow:none;color:var(--ink)}
+.btn.sm{min-height:38px;font-size:14px;border-radius:var(--r-sm);box-shadow:none}
+.btn.ghost.sm{box-shadow:none}
+.btn.sm:active{transform:scale(.98)}
+.btn.coral,.btn.sky,.btn.bib{box-shadow:none}
+.btn.bib{background:var(--bib);color:var(--bib-ink)}
+.iconbtn{border-width:1px;border-radius:var(--r-sm)}
+
+/* Superficies */
+.card{border-radius:var(--r);border:1px solid var(--line);padding:14px 16px}
+.input{border-width:1px;border-radius:var(--r-sm);min-height:46px;font-size:16px}
+.input:focus{border-color:var(--ink)}
+.pill{border-radius:4px;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;padding:3px 7px}
+.banner{border-radius:var(--r-sm);font-size:14px;font-weight:600}
+.seg{border-radius:10px;padding:3px;gap:3px}
+.seg button{border-radius:8px;min-height:38px;font-size:14px}
+.seg button.on{box-shadow:0 1px 2px rgba(0,0,0,.08)}
+.chip{border-width:1px;border-radius:var(--r-sm);min-height:36px;font-size:14px;padding:0 12px}
+.chip.on{border-color:var(--ink);background:var(--ink);color:var(--bg)}
+.stepper button{border-width:1px;border-radius:var(--r-sm)}
+.statrow,.dtrow{border-bottom-width:1px}
+.kpis{gap:0;border:1px solid var(--line);border-radius:var(--r);background:var(--card);overflow:hidden}
+.kpis div{border:0;border-radius:0;border-right:1px solid var(--line);padding:12px 4px 10px}
+.kpis div:last-child{border-right:0}
+.kpis b{font-size:30px}
+.kpis span{font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.08em}
+.sheetwrap{border-width:1px;border-radius:var(--r)}
+table.pl th.l,table.pl td.l{border-right-width:1px}
+.invcode{border-radius:var(--r-sm)}
+
+/* Listas agrupadas, como una tabla de resultados */
+.list{gap:0;border:1px solid var(--line);border-radius:var(--r);background:var(--card);overflow:hidden}
+.list>.lrow{border:0;border-radius:0;border-bottom:1px solid var(--line2);padding:11px 14px}
+.list>.lrow:last-child{border-bottom:0}
+.list>.lrow:active{background:var(--bg)}
+.list>.card{border:0;border-radius:0;border-bottom:1px solid var(--line2)}
+.lrow{border-width:1px;border-radius:var(--r)}
+.rate{border-radius:6px;font-size:20px}
+
+/* Voy / Duda / No voy: sin emojis, con una raya de color */
+.rsvp button{min-height:50px;border-radius:var(--r-sm);border-width:1px;font-size:15px;flex-direction:row;gap:8px}
+.rsvp button span{display:none}
+.rsvp button::before{content:"";width:8px;height:8px;border-radius:50%;background:currentColor;opacity:.35}
+.rsvp button.voy::before{background:#1FA84F;opacity:1}.rsvp button.duda::before{background:#F5A524;opacity:1}.rsvp button.no_voy::before{background:#E5484D;opacity:1}
+.rsvp button.on::before{background:currentColor}
+
+/* Tarjeta del partido: noche de estadio */
+.hero,.scoreboard{background:var(--night);color:#fff;border-radius:var(--r);padding:16px;position:relative;overflow:hidden}
+.hero::after,.scoreboard::after{content:"";position:absolute;inset:0;background:repeating-linear-gradient(90deg,rgba(255,255,255,.025) 0 28px,transparent 28px 56px);pointer-events:none}
+.scoreboard::before{content:"";position:absolute;right:-60px;top:50%;width:150px;height:150px;transform:translateY(-50%);border:2px solid rgba(255,255,255,.06);border-radius:50%}
+.hero .eyebrow{color:var(--bib);opacity:1;letter-spacing:.14em;font-size:11px}
+.hero h2{font-family:var(--f-num);font-size:34px;font-weight:900;text-transform:uppercase;letter-spacing:.01em;line-height:.95;margin-top:6px}
+.hero .meta{font-size:14px;opacity:.75}
+.hero .count{font-size:13px;opacity:.8;font-weight:600}
+.hero .rsvp button{background:rgba(255,255,255,.06);border-color:rgba(255,255,255,.14)}
+.hero .rsvp button.on.voy{background:var(--bib);color:#132000;border-color:var(--bib)}
+.hero .rsvp button.on.duda{background:#F5A524;color:#2a1a00;border-color:#F5A524}
+.hero .rsvp button.on.no_voy{background:#E5484D;border-color:#E5484D}
+.hero .link,.scoreboard .link{color:#fff!important}
+.scoreboard .sc{font-size:58px}
+.scoreboard .tn{font-size:16px;text-transform:uppercase;letter-spacing:.02em}
+.match .mdate{border-radius:var(--r-sm);background:var(--bg)}
+.wdl,.fd{border-radius:4px}
+.form .fd:last-child{outline-width:1.5px}
+.sheet{border-radius:18px 18px 0 0}
+.toast{border-radius:var(--r-sm);font-size:14px}
+.back{font-size:14px;text-transform:uppercase;letter-spacing:.08em}
+.welcome h1{font-size:52px}
+
+.tkind{flex:none;font-size:9.5px;font-weight:900;letter-spacing:.12em;text-transform:uppercase;padding:5px 6px;border-radius:4px;background:var(--grass-soft);color:var(--grass-ink);margin-top:2px}
+.tkind.casa{background:var(--sky-soft);color:var(--sky-ink)}
+/* ====== Cartas por categoría: Leyenda, Oro, Plata, Bronce o sin categoría ====== */
+.pc,.mc{--c1:#E7EAE8;--c2:#C3CAC6;--ink:#1D2521;--edge:rgba(255,255,255,.9)}
+@media (prefers-color-scheme:dark){.pc,.mc{--c1:#26302B;--c2:#18201C;--ink:#D9E2DD;--edge:rgba(255,255,255,.12)}}
+.pc.bronce,.mc.bronce{--c1:#E2B28A;--c2:#9C6136;--ink:#2E1708;--edge:#F3D2B4}
+.pc.plata,.mc.plata{--c1:#F4F6F7;--c2:#AEB8BF;--ink:#1C252B;--edge:#FFFFFF}
+.pc.oro,.mc.oro{--c1:#F7E08A;--c2:#C99A1E;--ink:#2B1E00;--edge:#FFF3C2}
+.pc.leyenda,.mc.leyenda{--c1:#2A2A2A;--c2:#050505;--ink:#E8C873;--edge:#C9A24A}
+.pc{border-radius:14px;clip-path:polygon(0 7%,9% 0,91% 0,100% 7%,100% 100%,0 100%);box-shadow:inset 0 0 0 2px var(--edge)}
+.pc::before{background:repeating-linear-gradient(115deg,rgba(255,255,255,.08) 0 8px,transparent 8px 18px)}
+.pc.leyenda::before{background:radial-gradient(circle at 50% 30%,rgba(232,200,115,.18),transparent 60%),repeating-linear-gradient(115deg,rgba(232,200,115,.06) 0 8px,transparent 8px 18px)}
+.pc.leyenda .pc-face{background:rgba(232,200,115,.12);color:#E8C873}
+.pc-cat{position:absolute;right:12px;top:12px;z-index:1;font-size:9.5px;font-weight:900;letter-spacing:.14em;text-transform:uppercase;opacity:.8}
+.pc.leyenda .pc-cat{opacity:1;color:#E8C873}
+.pc-name{font-family:var(--f-num);font-size:20px;font-weight:900;letter-spacing:.03em}
+.pc.big .pc-name{font-size:28px}
+.pc-face{background:rgba(255,255,255,.28)}
+.mc{border-radius:8px;border:0;box-shadow:inset 0 0 0 1.5px var(--edge),0 3px 0 rgba(0,0,0,.25);clip-path:polygon(0 8%,10% 0,90% 0,100% 8%,100% 100%,0 100%)}
+.mc.leyenda .mc-ov{color:#E8C873}
+.tok.c-voy .mc,.tok.c-no .mc,.tok.c-duda .mc,.tok.c-none .mc{clip-path:none}
+.catpill{font-size:10.5px;font-weight:900;letter-spacing:.12em;text-transform:uppercase;padding:4px 8px;border-radius:4px;background:linear-gradient(155deg,var(--c1,#E7EAE8),var(--c2,#C3CAC6));color:var(--ink,#1D2521)}
+.catpill.bronce{--c1:#E2B28A;--c2:#9C6136;--ink:#2E1708}.catpill.plata{--c1:#F4F6F7;--c2:#AEB8BF;--ink:#1C252B}.catpill.oro{--c1:#F7E08A;--c2:#C99A1E;--ink:#2B1E00}.catpill.leyenda{--c1:#2A2A2A;--c2:#050505;--ink:#E8C873}
 </style>
 </head>
 <body>
@@ -612,8 +756,32 @@ function teamForm(){
   return playedMatches().filter(x => wdl(x) !== 'N').sort((a,b) => new Date(a.starts_at || 0) - new Date(b.starts_at || 0)).slice(-5)
     .map(x => ({ r: wdl(x), t: `${x.goals_for}-${x.goals_against} vs ${x.opponent}` }));
 }
-const tier = (ov) => ov == null ? '' : ov >= 90 ? 'elite' : ov >= 75 ? 'oro' : ov >= 60 ? 'plata' : 'bronce';
+const tier = (ov) => ov == null ? '' : ov >= 88 ? 'leyenda' : ov >= 75 ? 'oro' : ov >= 62 ? 'plata' : 'bronce';
+// Categoría del jugador, como en POTRERO: por su trayectoria (títulos, goles, partidos) o por su carta, la que sea más alta.
+const CATS = ['', 'bronce', 'plata', 'oro', 'leyenda'];
+const CAT_NAME = { leyenda: 'Leyenda', oro: 'Oro', plata: 'Plata', bronce: 'Bronce', '': 'Sin categoría' };
+function careerCat(c){ return !c ? '' : (c.tit >= 2 || c.g >= 40 || c.pj >= 60) ? 'leyenda' : (c.pj >= 35 || (c.tit >= 1 && c.pj >= 30)) ? 'oro' : c.pj >= 15 ? 'plata' : c.pj >= 3 ? 'bronce' : ''; }
+function cat(m){ const a = tier(m.overall), b = careerCat(m.career && m.career.pj != null ? m.career : null); return CATS.indexOf(a) >= CATS.indexOf(b) ? a : b; }
 const STATUS = { ok: ['✅','Disponible'], lesionado: ['🤕','Lesionado'], ausente: ['✈️','Ausente'], suspendido: ['🟥','Suspendido'] };
+
+/* ============ Menos emojis ============ */
+// Los títulos, botones y etiquetas van sin el emoji de adelante: queda más sobrio, como una app de resultados.
+// (Los que dicen algo, como ⚽ en los goles o 🟨 en las tarjetas, siguen donde están.)
+const LEAD_EMOJI = /^\s*(?:\p{Extended_Pictographic}|\p{Regional_Indicator})(?:️|‍(?:\p{Extended_Pictographic}))*\s*/u;
+const DEEMOJI_SEL = 'h1,h2,h3,.btn,.link,.mini,summary,.banner,.hero .eyebrow,.section-title span,.seg button,.back';
+function deEmoji(root){
+  if (!root || root.nodeType !== 1) return;
+  const els = root.matches && root.matches(DEEMOJI_SEL) ? [root, ...root.querySelectorAll(DEEMOJI_SEL)] : root.querySelectorAll(DEEMOJI_SEL);
+  els.forEach(el => {
+    const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    let t; while ((t = w.nextNode()) && !t.nodeValue.trim());
+    if (!t || !LEAD_EMOJI.test(t.nodeValue)) return;
+    const rest = t.nodeValue.replace(LEAD_EMOJI, '');
+    if (!rest.trim() && el.textContent.replace(LEAD_EMOJI, '').trim() === '') return; // botón que es solo un emoji: se deja
+    t.nodeValue = rest;
+  });
+}
+new MutationObserver(ms => ms.forEach(m => m.addedNodes.forEach(deEmoji))).observe(document.documentElement, { childList: true, subtree: true });
 
 /* ============ Arranque ============ */
 async function boot(){
@@ -959,7 +1127,7 @@ function gateHTML(nx){
     <p style="font-size:20px;font-weight:800">vs ${esc(nx.opponent)}</p>
     ${nx.venue ? `<p class="muted">📍 ${esc(nx.venue)}</p>` : ''}
     ${rsvpButtons(nx, null)}
-    <p class="small muted" style="margin-top:14px">👍 ${cnt.voy} ya confirmaron${cnt.voy < (S.T.team.min_players ?? S.T.team.players_on_field + 3) ? ` · hacen falta ${S.T.team.min_players ?? S.T.team.players_on_field + 3}` : ''}</p>
+    <p class="small muted" style="margin-top:14px">${cnt.voy} ya confirmaron${cnt.voy < (S.T.team.min_players ?? S.T.team.players_on_field + 3) ? ` · hacen falta ${S.T.team.min_players ?? S.T.team.players_on_field + 3}` : ''}</p>
     <button class="link muted" id="gate-later" style="margin:18px auto 0">Responder después</button></div>`;
 }
 // La pizarra del próximo partido en Inicio, con cada uno pintado según confirmó
@@ -1035,7 +1203,7 @@ function renderInicio(){
       <div class="meta">${fmtWhen(nx.starts_at)}${nx.venue ? ` · ${esc(nx.venue)}` : ''}</div>
       ${nx.dt_member === meId() && !isDT() ? `<div class="count" style="margin-top:8px">📋 Este partido lo dirigís vos: armás la convocatoria, la pizarra y el resultado.</div>` : ''}
       ${m && m.plays ? `<div style="margin-top:14px">${rsvpButtons(nx, mine && mine.answer)}</div>` : ''}
-      <div class="count">👍 ${cnt.voy} van · 🤔 ${cnt.duda} dudan · 🙅 ${cnt.no} no van${cnt.pending.length ? ` · ${cnt.pending.length} sin responder` : ''}</div>
+      <div class="count"><i class="lg c-voy"></i>${cnt.voy} van <i class="lg c-duda" style="margin-left:8px"></i>${cnt.duda} dudan <i class="lg c-no" style="margin-left:8px"></i>${cnt.no} no van${cnt.pending.length ? ` <i class="lg c-none" style="margin-left:8px"></i>${cnt.pending.length} sin responder` : ''}</div>
       <div class="row" style="gap:18px;margin-top:10px;flex-wrap:wrap"><button class="link" id="nx-open" style="color:#fff;text-decoration:underline">Ver convocatoria</button>${lgMatchOf(nx) ? '<button class="link" id="nx-rv" style="color:#fff;text-decoration:underline">🔎 Informe del rival</button>' : ''}</div>
     </div>` : `<div class="card empty"><div class="big">🗓️</div><h3>No hay partidos en agenda</h3><p class="muted small" style="margin-top:4px">${isAdmin() ? 'Cargá el próximo y el plantel confirma desde acá.' : 'Cuando el DT cargue el próximo, confirmás desde acá.'}</p>${isAdmin() ? '<button class="btn sm" id="nx-new" style="margin-top:12px">＋ Cargar partido</button>' : ''}</div>`}
 
@@ -1421,7 +1589,7 @@ function tokHTML(s, i, notes = {}, map = null){
   // La cartita del jugador: media, posición y sus cuatro atributos, con el color de su nivel
   const pos = (m.positions || [])[0] || (s.gk ? 'ARQ' : '');
   const at = attrsFor(m), has = m.attrs && at.some(([k]) => m.attrs[k] != null), cr = career(m);
-  return `<div class="${cls}" data-i="${i}" style="left:${s.x}%;top:${s.y}%"><div class="mc ${m.overall != null ? tier(m.overall) : careerTier(cr)}">
+  return `<div class="${cls}" data-i="${i}" style="left:${s.x}%;top:${s.y}%"><div class="mc ${cat(m)}">
     <div class="mc-top">${m.overall != null ? `<span class="mc-ov">${m.overall}</span>` : ''}${pos ? `<span class="mc-pos">${pos}</span>` : ''}</div>
     ${has ? `<div class="mc-at">${at.map(([k, l]) => `<span>${l.slice(0, 3).toUpperCase()}<b>${m.attrs[k] ?? '–'}</b></span>`).join('')}</div>`
       : cr ? `<div class="mc-at"><span>PJ<b>${cr.pj}</b></span><span>GOL<b>${cr.g}</b></span><span>TOR<b>${cr.torneos}</b></span><span>TÍT<b>${cr.tit || 0}</b></span></div>` : `<b class="mc-ini">${esc(initials(m.name))}</b>`}
@@ -1673,7 +1841,7 @@ async function sharePizarra(){
   g.fillStyle = '#0B2417'; g.fillRect(0, 0, W, H);
   g.fillStyle = '#fff'; g.font = '900 64px "Big Shoulders Display", sans-serif'; g.textAlign = 'center';
   g.fillText(`${S.T.team.name.toUpperCase()} · ${PZ.formation}`, W/2, 110);
-  g.font = '600 34px "Bricolage Grotesque", sans-serif'; g.fillStyle = 'rgba(255,255,255,.75)';
+  g.font = '600 34px "Archivo", sans-serif'; g.fillStyle = 'rgba(255,255,255,.75)';
   const nx = nextMatch(); g.fillText(nx ? `vs ${nx.opponent} · ${fmtWhen(nx.starts_at)}` : PZ.name, W/2, 165);
   const top = 220;
   for (let i = 0; i < 10; i++){ g.fillStyle = i % 2 ? '#23A658' : '#1E9A50'; g.fillRect(pad, top + i*fh/10, fw, fh/10 + 1); }
@@ -1684,7 +1852,7 @@ async function sharePizarra(){
   g.beginPath(); g.arc(X(34), Y(50), 8.2/68*fw, 0, Math.PI*2); g.stroke();
   [[15,2.5,38,15.5],[24.5,2.5,19,5.5],[15,82,38,15.5],[24.5,92,19,5.5]].forEach(([x,y,w,h]) => g.strokeRect(X(x), Y(y), w/68*fw, h/100*fh));
   // Las mismas cartitas que en la pantalla: color del nivel, media, posición y sus cuatro números
-  const TIER = { bronce: ['#E6B98C', '#B57B45', '#3A2210'], plata: ['#F1F4F6', '#A9B6BF', '#1E2A33'], oro: ['#FCE38A', '#D9A520', '#3B2A00'], elite: ['#1A5C35', '#0B2A18', '#F4F9D2'], '': ['#E3EAE5', '#A9B8AE', '#1D2A22'] };
+  const TIER = { bronce: ['#E2B28A', '#9C6136', '#2E1708'], plata: ['#F4F6F7', '#AEB8BF', '#1C252B'], oro: ['#F7E08A', '#C99A1E', '#2B1E00'], leyenda: ['#2A2A2A', '#050505', '#E8C873'], '': ['#E7EAE8', '#C3CAC6', '#1D2521'] };
   const RING = { voy: '#1FA84F', duda: '#F5A524', no_voy: '#E5484D' };
   const map = nx ? rsvpMap(nx) : null;
   const CW = 172, CH = 184;
@@ -1696,7 +1864,7 @@ async function sharePizarra(){
       return;
     }
     const cr = career(m), at = attrsFor(m), has = m.attrs && at.some(([k]) => m.attrs[k] != null);
-    const [c1, c2, ink] = TIER[m.overall != null ? tier(m.overall) : careerTier(cr)] || TIER[''];
+    const [c1, c2, ink] = TIER[cat(m)] || TIER[''];
     const x = cx - CW/2, y = cy - CH/2 - 14;
     if (map){ const rc = map[m.id] ? RING[map[m.id]] : '#C9D3CC'; g.fillStyle = rc; g.beginPath(); g.roundRect(x - 9, y - 9, CW + 18, CH + 18, 26); g.fill(); }
     g.fillStyle = 'rgba(0,0,0,.3)'; g.beginPath(); g.roundRect(x, y + 8, CW, CH, 20); g.fill();
@@ -1706,27 +1874,27 @@ async function sharePizarra(){
     g.fillStyle = ink; g.textAlign = 'left'; g.textBaseline = 'alphabetic';
     if (m.overall != null){ g.font = '900 54px "Big Shoulders Display", sans-serif'; g.fillText(String(m.overall), x + 12, y + 54); }
     const pos = (m.positions || [])[0] || (s.gk ? 'ARQ' : '');
-    g.font = '800 22px "Bricolage Grotesque", sans-serif'; g.fillText(pos, x + (m.overall != null ? 80 : 14), y + (m.overall != null ? 50 : 40));
+    g.font = '800 22px "Archivo", sans-serif'; g.fillText(pos, x + (m.overall != null ? 80 : 14), y + (m.overall != null ? 50 : 40));
     const cells = has ? at.map(([k, l]) => [l.slice(0, 3).toUpperCase(), m.attrs[k] ?? '–']) : cr ? [['PJ', cr.pj], ['GOL', cr.g], ['TOR', cr.torneos], ['TÍT', cr.tit || 0]] : null;
     if (cells){
       cells.forEach(([l, v], k) => {
         const colX = x + 12 + (k % 2) * (CW / 2 - 4), rowY = y + CH - 62 + Math.floor(k / 2) * 44;
-        g.font = '800 15px "Bricolage Grotesque", sans-serif'; g.textAlign = 'left'; g.globalAlpha = .85; g.fillText(l, colX, rowY); g.globalAlpha = 1;
+        g.font = '800 15px "Archivo", sans-serif'; g.textAlign = 'left'; g.globalAlpha = .85; g.fillText(l, colX, rowY); g.globalAlpha = 1;
         g.font = '900 32px "Big Shoulders Display", sans-serif'; g.textAlign = 'right'; g.fillText(String(v), colX + CW / 2 - 14, rowY + 2);
       });
     } else { g.font = '900 60px "Big Shoulders Display", sans-serif'; g.textAlign = 'right'; g.fillText(initials(m.name).toUpperCase(), x + CW - 14, y + CH - 18); }
     g.textAlign = 'center';
-    g.font = '800 28px "Bricolage Grotesque", sans-serif'; const w = g.measureText(m.name).width + 26;
+    g.font = '800 28px "Archivo", sans-serif'; const w = g.measureText(m.name).width + 26;
     g.fillStyle = map && map[m.id] === 'no_voy' ? '#E5484D' : map && map[m.id] === 'voy' ? '#167A3A' : map && map[m.id] === 'duda' ? '#B97400' : 'rgba(0,0,0,.6)';
     g.beginPath(); g.roundRect(cx - w/2, y + CH + 10, w, 42, 10); g.fill();
     g.fillStyle = '#fff'; g.textBaseline = 'middle'; g.fillText(m.name, cx, y + CH + 32); g.textBaseline = 'alphabetic';
   });
   if (map){
-    g.font = '700 28px "Bricolage Grotesque", sans-serif'; g.textAlign = 'center';
+    g.font = '700 28px "Archivo", sans-serif'; g.textAlign = 'center';
     const ids = PZ.slots.map(s => s.m).filter(Boolean), n = (a) => ids.filter(id => (map[id] || null) === a).length;
     g.fillStyle = 'rgba(255,255,255,.85)'; g.fillText(`🟢 Va ${n('voy')}   🟡 Duda ${n('duda')}   🔴 No va ${n('no_voy')}   ⚪ Sin responder ${n(null)}`, W/2, top + fh + 70);
   }
-  g.fillStyle = 'rgba(255,255,255,.55)'; g.font = '600 28px "Bricolage Grotesque", sans-serif'; g.fillText('Armado en La Casaca', W/2, H - 40);
+  g.fillStyle = 'rgba(255,255,255,.55)'; g.font = '600 28px "Archivo", sans-serif'; g.fillText('Armado en La Casaca', W/2, H - 40);
   const blob = await new Promise(r => c.toBlob(r, 'image/png'));
   const file = new File([blob], `pizarra-${PZ.formation}.png`, { type: 'image/png' });
   try {
@@ -2172,7 +2340,7 @@ function trainCard(t){
   const myPill = l ? `<span class="pill ${tDone(l) ? 'ok' : l.status === 'rechazado' || l.status === 'ausente' ? 'coral' : l.status === 'no_puedo' ? '' : 'sky'}">${TSTATUS[l.status][0]} ${TSTATUS[l.status][1]}</span>`
     : !tPast(t) && member(meId()) && member(meId()).plays ? `<span class="pill gold">${t.kind === 'casa' ? 'Pendiente' : 'Confirmá'}</span>` : '';
   return `<button class="card tap" data-train="${t.id}" style="padding:12px 14px">
-    <span class="row" style="align-items:flex-start"><span style="font-size:28px;line-height:1">${t.kind === 'casa' ? '🏠' : '🏟️'}</span>
+    <span class="row" style="align-items:flex-start"><span class="tkind ${t.kind}">${t.kind === 'casa' ? 'Casa' : 'Cancha'}</span>
       <span class="grow"><b class="ell" style="display:block;font-size:17px">${esc(t.title)}</b>
         <span class="small muted">${t.kind === 'casa' ? (w ? `Hasta el ${fmtWhen(w)}` : 'Sin fecha límite') : fmtWhen(w)}${t.venue ? ' · ' + esc(t.venue) : ''}${t.plan && INTENSITY[t.plan.intensity] ? ' · ' + INTENSITY[t.plan.intensity][0] + (t.plan.minutes ? ` ${t.plan.minutes}'` : '') : ''}</span></span>
       ${t.mandatory ? '<span class="pill coral">Obligatorio</span>' : ''}</span>
@@ -2396,18 +2564,20 @@ const careerTier = (c) => !c ? '' : c.pj >= 40 ? 'oro' : c.pj >= 20 ? 'plata' : 
 const gpp = (c) => (c.pj ? c.g / c.pj : 0).toLocaleString('es-AR', { maximumFractionDigits: 2 });
 function careerHTML(m){
   const c = career(m); if (!c) return '';
-  return `<div class="section"><div class="section-title"><h2>🏆 Trayectoria</h2>${c.tit ? `<span class="pill gold">${c.tit === 1 ? '1 título' : c.tit + ' títulos'}</span>` : ''}</div>
+  const k = careerCat(c);
+  return `<div class="section"><div class="section-title"><h2>Trayectoria</h2>${k ? `<span class="catpill ${k}">${CAT_NAME[k]}</span>` : ''}</div>
     <div class="kpis"><div><b>${c.torneos}</b><span>Torneos</span></div><div><b>${c.pj}</b><span>Partidos</span></div><div><b>${c.g}</b><span>Goles</span></div><div><b>${gpp(c)}</b><span>Goles x PJ</span></div></div>
     ${c.am || c.ro ? `<p class="small muted" style="margin-top:6px;text-align:center">🟨 ${c.am || 0} · 🟥 ${c.ro || 0} en toda su carrera</p>` : ''}
     ${(c.list || []).length ? `<div class="list" style="margin-top:10px">${c.list.map(t => `<div class="lrow" style="padding:8px 12px"><span class="t"><b>${t.c ? '🏆 ' : ''}${esc(t.t)}</b><small>${plural(t.pj, 'partido', 'partidos')}${t.c ? ' · campeón' : ''}</small></span><span class="num" style="font-size:18px;font-weight:900">${t.g ? '⚽ ' + t.g : ''}</span></div>`).join('')}</div>` : ''}
-    <p class="tiny muted" style="margin-top:6px">Datos de ${esc(c.src || 'su historial')}${c.at ? ' al ' + fmtWhen(c.at + 'T12:00', false) : ''}.</p></div>`;
+    <p class="tiny muted" style="margin-top:6px">Datos de ${esc(c.src || 'su historial')}${c.at ? ' al ' + fmtWhen(c.at + 'T12:00', false) : ''}. Categoría: Leyenda (2+ títulos, 40+ goles o 60+ partidos), Oro (35+ partidos, o campeón con 30+), Plata (15+), Bronce (3+).</p></div>`;
 }
 function cardHTML(m, big = false){
-  const ov = m.overall, pos = (m.positions || [])[0] || '—', cr = career(m), tr = ov != null ? tier(ov) : careerTier(cr);
+  const ov = m.overall, pos = (m.positions || [])[0] || '—', cr = career(m), tr = cat(m);
   const at = attrsFor(m);
   return `<div class="pc ${tr} ${big ? 'big' : ''} ${m.status !== 'ok' ? 'out' : ''}">
     ${ov != null || pos !== '—' ? `<div class="pc-top">${ov != null ? `<span class="pc-ov">${ov}</span>` : ''}${pos !== '—' ? `<span class="pc-pos">${pos}</span>` : ''}</div>` : ''}
     ${m.status !== 'ok' ? `<span class="pc-st">${STATUS[m.status][0]}</span>` : ''}
+    ${tr ? `<span class="pc-cat">${CAT_NAME[tr]}</span>` : ''}
     <div class="pc-face">${m.number ?? esc(initials(m.name))}</div>
     <div class="pc-name ell">${esc(m.name)}</div>
     ${(m.positions || []).length > 1 ? `<div class="pc-sub" style="margin-top:0">${m.positions.slice(1, 4).join(' · ')}</div>` : ''}
