@@ -619,7 +619,10 @@ const ERRORS = {
   RECIEN_ACTUALIZADO: 'Se actualizó hace menos de 10 minutos. Probá en un rato.',
   LINK_INVALIDO: 'Revisá el link (tiene que tener idTorneo=…) y el nombre del equipo.',
   FALTA_FOTO: 'Este entrenamiento pide una foto de prueba 📸',
-  FOTO_MUY_GRANDE: 'La foto es muy pesada. Probá con otra.'
+  FOTO_MUY_GRANDE: 'La foto es muy pesada. Probá con otra.',
+  DEMASIADOS: 'Entraron muchos en poco tiempo. Probá de nuevo en un rato.',
+  INTENTA_DE_NUEVO: 'No se pudo entrar. Probá de nuevo.',
+  NO_EXISTE: 'Eso ya no existe.'
 };
 let netOnline = true;
 async function rpc(fn, args={}){
@@ -795,7 +798,7 @@ async function boot(){
   if (q.get('t')){ S.tab = 'entrenos'; S.trainId = q.get('t'); }
   if (q.toString()) history.replaceState(null, '', location.pathname);
   if (demo){ startDemo(demo === 'jugador' ? 'jugador' : 'dt'); return; }
-  if (!S.token){ renderWelcome(); return; }
+  if (!S.token){ S.pendingJoin ? renderQuickJoin(S.pendingJoin) : renderWelcome(); return; }
   try { await loadMe(); }
   catch(e){
     if (!S.token){ renderWelcome(); return; }
@@ -837,6 +840,44 @@ function demoBarHTML(){
 function bindDemoBar(){
   $$('[data-demo]').forEach(b => b.onclick = () => { if (b.dataset.demo !== DEMO.role) startDemo(b.dataset.demo); });
   $('#demo-out').onclick = () => location.replace(location.pathname);
+}
+/* ============ Entrar con un toque ============ */
+// Como en Tricount: el link muestra el plantel, cada uno toca quién es y entra. Crear usuario (apodo y PIN) queda para después.
+async function renderQuickJoin(code){
+  $('#app').innerHTML = '<div class="spinner" aria-label="Cargando"></div>';
+  let t;
+  try { t = await rpc('fc_team_preview', { p_code: code }); }
+  catch(e){ S.pendingJoin = null; renderWelcome(); toast(e.message, 3500); return; }
+  const pl = t.free.filter(m => !m.guest && m.plays !== false), staffList = t.free.filter(m => !m.guest && m.plays === false), gs = t.free.filter(m => m.guest);
+  const row = (m) => `<button class="lrow" data-qj="${m.id}"><span class="av" style="background:${avColor(m.name)}">${esc(initials(m.name))}</span><span class="t"><b>${esc(m.name)}</b>${m.pos || m.number != null ? `<small>${[m.pos, m.number != null ? '#' + m.number : ''].filter(Boolean).join(' · ')}</small>` : ''}</span><span class="pill ok">Soy yo</span></button>`;
+  $('#app').innerHTML = `<div class="welcome qj">
+    <div style="font-size:44px;line-height:1">${esc(t.emoji)}</div>
+    <div class="mini" style="margin-top:10px">Te invitaron a</div>
+    <h1 style="margin-top:6px">${esc(t.name)}</h1>
+    <p class="muted" style="font-size:17px;margin:10px 0 18px">${t.staff ? 'Entrás como <b>cuerpo técnico</b>. ' : ''}Tocá tu nombre y listo: no hace falta crear usuario.</p>
+    ${pl.length || staffList.length ? `<div class="section-title"><h2>¿Quién sos?</h2><span class="small muted">${t.taken ? `Ya entraron ${t.taken}` : ''}</span></div>
+      ${pl.length > 8 ? '<input class="input" id="qj-q" placeholder="Buscá tu nombre" autocomplete="off" style="margin-bottom:10px">' : ''}
+      <div class="list" id="qj-list">${pl.map(row).join('')}${staffList.map(row).join('')}</div>` : ''}
+    ${gs.length ? `<details style="margin-top:14px"><summary class="small" style="font-weight:800;cursor:pointer">Vine como invitado (${gs.length})</summary><div class="list" style="margin-top:10px">${gs.map(row).join('')}</div></details>` : ''}
+    <form class="card section" id="qj-new"><b>¿No estás en la lista?</b><p class="small muted" style="margin:2px 0 10px">Poné tu nombre como te dicen en el equipo y entrás igual.</p>
+      <div class="row"><input class="input" id="qj-n" maxlength="30" placeholder="Tu nombre o apodo" style="flex:1"><button class="btn sm" type="submit">Entrar</button></div></form>
+    <button class="link muted" id="qj-have" style="display:block;margin:20px auto 0">Ya tengo usuario (apodo y PIN)</button>
+  </div>`;
+  const go = async (args, label) => {
+    try {
+      const r = await rpc('fc_quick_join', { p_code: code, ...args });
+      S.token = r.token; LS.set('casaca_token', r.token); LS.del('casaca_salio'); S.teamId = r.team; LS.set('casaca_team', r.team); S.pendingJoin = null;
+      await loadMe(); await loadTeam(); S.tab = 'inicio'; closeSheet(); render(); scrollTo(0, 0);
+      toast(`¡Listo, ${label}! Ya estás en ${t.name} ${t.emoji}`, 3500);
+    } catch(e){ toast(e.message, 3500); if (e.code === 'YA_RECLAMADO') renderQuickJoin(code); }
+  };
+  $$('[data-qj]').forEach(b => b.onclick = () => {
+    const m = t.free.find(x => x.id === b.dataset.qj);
+    confirmSheet(`¿Sos ${esc(m.name)}?`, `Vas a entrar a ${esc(t.name)} como <b>${esc(m.name)}</b>, con tus partidos y estadísticas. Si te equivocaste, el DT lo corrige.`, 'Sí, soy yo', () => go({ p_member: m.id }, m.name), false);
+  });
+  const q = $('#qj-q'); if (q) q.oninput = () => { const v = q.value.trim().toLowerCase(); $$('#qj-list [data-qj]').forEach(b => b.hidden = v && !b.textContent.toLowerCase().includes(v)); };
+  $('#qj-new').onsubmit = (e) => { e.preventDefault(); const n = $('#qj-n').value.trim(); if (!n) return toast('Poné tu nombre'); go({ p_name: n }, n); };
+  $('#qj-have').onclick = loginSheet;
 }
 function renderWelcome(){
   $('#app').innerHTML = `
@@ -1064,7 +1105,10 @@ function teamsSheet(){
   $$('.lrow', el).forEach(b => b.onclick = async () => { closeSheet(); if (b.dataset.id === S.teamId) return; S.teamId = b.dataset.id; S.matchId = null; LS.set('casaca_team', S.teamId); $('#main').innerHTML = '<div class="spinner"></div>'; await refresh(); });
   $('#ts-j', el).onclick = joinSheet; $('#ts-c', el).onclick = createTeamSheet;
 }
-function logout(){ if (S.demo) return location.replace(location.pathname); LS.del('casaca_token'); LS.set('casaca_salio', '1'); location.replace(location.pathname); }
+function logout(){
+  if (S.demo) return location.replace(location.pathname);
+  if (S.me && !S.me.user.has_pin && !logout.ok){ logout.ok = true; return confirmSheet('¿Salir sin crear tu usuario?', 'Entraste con un toque y todavía no tenés apodo y PIN. Si salís, para volver a entrar el DT te va a tener que liberar tu nombre. Mejor creá tu usuario primero.', 'Salir igual', logout); }
+  LS.del('casaca_token'); LS.set('casaca_salio', '1'); location.replace(location.pathname); }
 
 /* ============ Inicio ============ */
 function rsvpButtons(x, mine){
@@ -1255,7 +1299,7 @@ function inviteLink(code){ return /vercel\.app$/.test(location.hostname) ? `${lo
 const missingPlayers = () => players().filter(m => !m.claimed);
 function inviteText(){
   const t = S.T.team, am = isPicadito();
-  return `${t.emoji} *${t.name}* ya tiene app 📲\n${inviteLink(t.code)}\n\n1️⃣ Poné tu apodo y un PIN de 4 números\n2️⃣ ${missingPlayers().length && !am ? 'Tocá tu nombre en el plantel (ya estás cargado)' : 'Sumate al grupo'}\n3️⃣ Listo: ${am ? 'te anotás para el fulbito, ves los equipos y la tabla' : 'confirmás si vas, ves la pizarra, tus goles y la tabla del torneo'}\n\nTarda un minuto. Si te pide código: ${t.code}`;
+  return `${t.emoji} *${t.name}* ya tiene app 📲\n${inviteLink(t.code)}\n\nAbrí el link, tocá tu nombre y listo: no hace falta crear usuario.\nAdentro ${am ? 'te anotás para el fulbito, ves los equipos y la tabla' : 'confirmás si vas, ves la pizarra, tus goles y la tabla del torneo'}.`;
 }
 // Para el grupo: nombra a los que todavía no entraron.
 function nudgeText(){
@@ -2703,6 +2747,7 @@ function editPlayerSheet(id){
       ${adm && !self ? `<label class="field"><span>WhatsApp (opcional)</span><input class="input" id="ep-c" inputmode="tel" maxlength="60" value="${esc(m.contact || '')}" placeholder="Ej: 11 5555 5555"><div class="hint">Lo ven solo el DT y los ayudantes. Sirve para llamarlo cuando falte gente.</div></label>
       <div class="field"><span>¿Es del plantel?</span><div class="seg" id="ep-g"><button type="button" data-v="0" class="${!m.guest ? 'on' : ''}">Sí, del plantel</button><button type="button" data-v="1" class="${m.guest ? 'on' : ''}">Invitado</button></div></div>` : ''}
       <button class="btn" type="submit">Guardar</button>
+      ${adm && !self && m.claimed && (dt || m.role !== 'dt') ? '<button type="button" class="link" id="ep-rel" style="display:block;margin:6px auto 0">Liberar este nombre (lo eligió otra persona)</button>' : ''}
       ${adm && !self && (dt || m.role !== 'dt') ? '<button type="button" class="link danger" id="ep-del" style="display:block;margin:6px auto 0">Dar de baja del plantel</button>' : ''}
     </form>`);
   $$('#ep-pos .chip', el).forEach(b => b.onclick = () => {
@@ -2723,6 +2768,9 @@ function editPlayerSheet(id){
     try { await rpc('fc_member_save', { ...P(), p_team: S.teamId, p_id: id, p }); closeSheet(); await refresh(); toast('Ficha guardada'); }
     catch(err){ toast(err.message); }
   };
+  const rel = $('#ep-rel', el); if (rel) rel.onclick = () => { closeSheet(); setTimeout(() => confirmSheet(`¿Liberar a ${esc(m.name)}?`, 'Quien lo eligió sale de esta ficha y el nombre vuelve a la lista del link, para que lo elija quien corresponde. Sus partidos y estadísticas quedan.', 'Liberar', async () => {
+    try { await rpc('fc_member_release', { ...P(), p_member: id }); closeSheet(); await refresh(); toast(`${m.name} quedó libre para elegir`); } catch(e){ toast(e.message, 3500); }
+  }), 80); };
   const del = $('#ep-del', el); if (del) del.onclick = () => { closeSheet(); setTimeout(() => confirmSheet(`¿Dar de baja a ${esc(m.name)}?`, 'Deja de aparecer en el plantel. Sus estadísticas quedan guardadas.', 'Dar de baja', async () => { try { await rpc('fc_member_save', { ...P(), p_team: S.teamId, p_id: id, p: { active: false } }); closeSheet(); await refresh(); } catch(e){ toast(e.message); } }), 80); };
 }
 function statusSheet(m){
@@ -3417,13 +3465,13 @@ function bindPushCard(root){
 /* ============ Perfil y ajustes ============ */
 function profileSheet(){
   const dt = isDT(), t = S.T.team, m = member(meId());
-  const el = openSheet(`<div class="row"><span class="av lg" style="background:${avColor(S.me.user.nick)}">${esc(initials(S.me.user.nick))}</span><div><h2>${esc(S.me.user.nick)}</h2><p class="muted small">En ${esc(t.name)}: ${esc(m.name)} · ${ROLE[m.role]}</p></div></div>
+  const el = openSheet(`<div class="row"><span class="av lg" style="background:${avColor(S.me.user.nick)}">${esc(initials(S.me.user.has_pin ? S.me.user.nick : (m ? m.name : S.me.user.nick)))}</span><div><h2>${esc(S.me.user.has_pin ? S.me.user.nick : (m ? m.name : S.me.user.nick))}</h2><p class="muted small">En ${esc(t.name)}: ${esc(m.name)} · ${ROLE[m.role]}</p></div></div>
     <div class="stack section">
       ${m.plays ? '<button class="btn ghost" id="pf-card">🃏 Mi carta</button><button class="btn ghost" id="pf-st">' + STATUS[m.status][0] + ' Mi estado: ' + STATUS[m.status][1] + '</button>' : ''}
       ${dt ? '<button class="btn ghost" id="pf-set">⚙️ Ajustes del equipo</button>' : ''}
       <button class="btn ghost" id="pf-inv">📲 Invitar al equipo</button>
       ${S.push === 'on' ? '<button class="btn ghost" id="pf-push">🔔 Avisos activados · apagar</button>' : S.push === 'off' ? '<button class="btn ghost" id="pf-push">🔕 Activar avisos al celu</button>' : S.push === 'ios' ? '<p class="small muted">📲 Para recibir avisos en iPhone, instalá la app: Compartir ⬆️ → Agregar a inicio.</p>' : S.push === 'denied' ? '<p class="small muted">🔕 Los avisos están bloqueados para esta página. Se activan desde los ajustes del navegador.</p>' : ''}
-      ${!S.me.user.has_pin ? '<button class="btn" id="pf-pin">🔒 Crear PIN para entrar desde otro celu</button>' : ''}
+      ${!S.me.user.has_pin ? '<div class="card"><b>Entraste con un toque desde este celu</b><p class="small muted" style="margin:2px 0 10px">Si querés entrar desde otro celu o no perder el acceso, creá tu usuario: un apodo y un PIN de 4 números.</p><button class="btn sm" id="pf-pin" style="width:100%">Crear mi usuario</button></div>' : ''}
     </div>
     ${S.demo ? '' : `<div class="card section" style="border-color:#FF7A1A"><b>🔥 Fueguitos</b><p class="muted small" style="margin:4px 0 10px">Tus hábitos con racha: dormir, hidratarte, entrenar. Es la misma cuenta, entrás directo.</p>
       <a class="btn sm" style="width:100%;text-decoration:none;background:#FF7A1A;box-shadow:0 3px 0 #C24E00" href="${fueguitosURL()}" target="_blank" rel="noopener">Ir a Fueguitos</a>
@@ -3435,11 +3483,28 @@ function profileSheet(){
   on('#pf-set', settingsSheet);
   on('#pf-inv', inviteSheet);
   on('#pf-push', () => S.push === 'on' ? pushDisable() : pushEnable());
-  on('#pf-pin', pinSheet);
+  on('#pf-pin', secureSheet);
   on('#pf-leave', () => confirmSheet(`¿Salir de ${esc(t.name)}?`, 'Tu ficha y tus estadísticas quedan en el equipo, sin dueño. Podés volver con el código.', 'Salir', async () => {
     try { await rpc('fc_leave', { ...P(), p_team: S.teamId }); closeSheet(); S.teamId = null; await loadMe(); await loadTeam(); render(); } catch(e){ toast(e.message, 3500); }
   }));
   $('#pf-out', el).onclick = logout;
+}
+function secureSheet(){
+  const m = member(meId()), base = (m ? m.name : S.me.user.nick).replace(/ \d{4}$/, '');
+  const el = openSheet(`<h2>Crear mi usuario</h2><p class="muted">Con este apodo y el PIN entrás desde cualquier celu (y en Fueguitos, que es la misma cuenta).</p>
+    <form class="stack section" id="sc">
+      <label class="field"><span>Apodo</span><input class="input" id="sc-n" maxlength="30" value="${esc(base)}" autocomplete="username"></label>
+      <label class="field"><span>PIN de 4 números</span>${pinInput('sc-p')}</label>
+      <button class="btn" type="submit">Guardar</button>
+    </form>`);
+  $('#sc', el).onsubmit = async (e) => {
+    e.preventDefault();
+    const n = $('#sc-n', el).value.trim(), p = $('#sc-p', el).value;
+    if (!n) return toast('Poné un apodo');
+    if (!/^\d{4}$/.test(p)) return toast('El PIN son 4 números');
+    try { await rpc('fc_account_secure', { ...P(), p_nick: n, p_pin: p }); await loadMe(); closeSheet(); render(); toast(`Listo. Entrás con «${n}» y tu PIN.`, 3500); }
+    catch(err){ toast(err.code === 'APODO_EN_USO' ? 'Ese apodo ya lo usa otra persona. Probá con otro (por ejemplo, con tu apellido).' : err.message, 4000); }
+  };
 }
 function pinSheet(){
   const el = openSheet(`<h2>Creá tu PIN</h2><p class="muted">Con tu apodo (${esc(S.me.user.nick)}) y este PIN entrás desde cualquier celu.</p>
