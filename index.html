@@ -1515,6 +1515,95 @@ function myStatsSheet(matchId, memberId){
   };
 }
 // El DT puntúa a todos de una: lista con stepper por jugador.
+/* ============ Buscador en las listas de jugadores ============ */
+const normTxt = (x) => String(x || '').normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();
+// Pone un buscador arriba de una lista: filtra por nombre a medida que escribís.
+function addSearch(root, itemSel, before, ph = 'Buscar jugador', min = 7){
+  const items = $$(itemSel, root);
+  if (!before || items.length < min) return;
+  const i = document.createElement('input');
+  i.className = 'input search'; i.type = 'search'; i.placeholder = ph; i.autocomplete = 'off'; i.style.marginBottom = '10px';
+  before.parentNode.insertBefore(i, before);
+  i.oninput = () => { const v = normTxt(i.value.trim()); $$(itemSel, root).forEach(e => e.hidden = !!v && !normTxt(e.textContent).includes(v)); };
+}
+
+/* ============ Puntajes pegados desde WhatsApp ============ */
+// "1. Bauto - 6 ⚽", "Joni (arquero) - 8", "ADZ 6", "iña - 6": la app reconoce a cada uno, el puntaje y los goles.
+function parseRatingLines(txt){
+  return String(txt || '').split(/\n/).map(l => l.replace(/[\u2060\u200B\u200C\u200D\u200E\u200F\uFEFF*_~]/g, '').trim()).filter(Boolean).map(l => {
+    const goals = (l.match(/⚽/g) || []).length;
+    const t = l.replace(/⚽\uFE0F?/g, ' ').replace(/^\s*\d{1,2}\s*[.)\-–]\s*/, '').trim();
+    const m = t.match(/^(.*?[^\d\s:/.,])[\s:–—\-=]*(\d{1,2}(?:[.,]\d)?)\s*$/);
+    if (!m) return null;
+    const r = parseFloat(m[2].replace(',', '.'));
+    if (!(r >= 0 && r <= 10)) return null;
+    const raw = m[1].trim(), note = (raw.match(/\(([^)]*)\)/) || [])[1] || '';
+    return { line: l, name: raw.replace(/\([^)]*\)/g, '').replace(/[\s\-–:]+$/, '').trim(), note, r, goals };
+  }).filter(x => x && x.name);
+}
+const aliasKey = () => 'casaca_alias_' + S.teamId;
+function aliases(){ try { return JSON.parse(LS.get(aliasKey()) || '{}'); } catch(e){ return {}; } }
+function matchMember(name, pool){
+  const n = (x) => normTxt(x).replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+  const q = n(name); if (!q) return null;
+  const al = aliases()[q]; if (al && pool.some(m => m.id === al)) return pool.find(m => m.id === al);
+  const keys = (m) => { const o = officialOf(m), ks = [n(m.name), n(m.name.replace(/\([^)]*\)/g, ''))]; (m.name.match(/\(([^)]*)\)/g) || []).forEach(x => ks.push(n(x))); if (o) ks.push(n(o.name)); return ks.filter(Boolean); };
+  for (const t of [q, q.split(' ')[0]]){
+    let c = pool.filter(m => keys(m).includes(t)); if (c.length === 1) return c[0];
+    c = pool.filter(m => keys(m).some(k => k.split(' ').includes(t))); if (c.length === 1) return c[0];
+    if (t.length >= 3){
+      c = pool.filter(m => keys(m).some(k => k.startsWith(t))); if (c.length === 1) return c[0];
+      c = pool.filter(m => keys(m).some(k => k.split(' ').some(w => w.startsWith(t)))); if (c.length === 1) return c[0];
+    }
+  }
+  return null;
+}
+function pasteRatingsSheet(matchId){
+  const x = S.T.matches.find(y => y.id === matchId);
+  const el = openSheet(`<h2>Pegar puntajes</h2><p class="muted">vs ${esc(x.opponent)} · Pegá la lista como la mandan al grupo. Un jugador por línea, con el puntaje al final; los ⚽ cuentan como goles.</p>
+    <textarea class="input section" id="pr-t" rows="9" placeholder="1. Bauto 6 ⚽&#10;2. Palme 5&#10;3. Joni (arquero) 8&#10;…"></textarea>
+    <button class="btn section" id="pr-go">Leer la lista</button>`);
+  $('#pr-go', el).onclick = () => {
+    const rows = parseRatingLines($('#pr-t', el).value);
+    if (!rows.length) return toast('No encontré puntajes. Cada línea tiene que terminar con el número.', 3500);
+    closeSheet(); setTimeout(() => pasteReviewSheet(matchId, rows), 80);
+  };
+}
+function pasteReviewSheet(matchId, rows){
+  const pool = [...players(), ...guests()].sort((a, b) => a.name.localeCompare(b.name));
+  const st = S.T.stats.filter(z => z.match_id === matchId);
+  rows.forEach(r => { const m = matchMember(r.name, pool); r.pick = m ? m.id : ''; r.auto = !!m; });
+  const opts = (r) => `<option value="">¿Quién es?</option><option value="__new">Sumar «${esc(r.name)}» como invitado</option><option value="__skip">No cargar</option>${pool.map(m => `<option value="${m.id}" ${m.id === r.pick ? 'selected' : ''}>${esc(m.name)}${m.guest ? ' (invitado)' : ''}</option>`).join('')}`;
+  const unknown = rows.filter(r => !r.pick).length;
+  const el = openSheet(`<h2>Revisá antes de guardar</h2><p class="muted">${rows.length - unknown} reconocidos${unknown ? ` · <b>${unknown} para elegir</b>` : ''}. Podés cambiar cualquiera.</p>
+    <div class="card section" style="padding:0 12px" id="pv">${rows.map((r, i) => `<div class="dtrow" style="grid-template-columns:minmax(0,1fr) auto">
+      <div style="min-width:0"><div class="small muted ell">«${esc(r.name)}»${r.note ? ` (${esc(r.note)})` : ''}${r.goals ? ' ' + '⚽'.repeat(Math.min(r.goals, 5)) : ''}</div>
+        <select class="input" data-i="${i}" style="min-height:40px;margin-top:4px;${r.pick ? '' : 'border-color:var(--coral)'}">${opts(r)}</select></div>
+      <input class="input" data-r="${i}" type="number" inputmode="decimal" min="0" max="10" step="0.5" value="${r.r}" style="width:72px;text-align:center;font-weight:800"></div>`).join('')}</div>
+    <button class="btn section" id="pv-ok">Guardar ${rows.length} puntajes</button>`);
+  $$('#pv select', el).forEach(sel => sel.onchange = () => { rows[+sel.dataset.i].pick = sel.value; sel.style.borderColor = sel.value ? '' : 'var(--coral)'; });
+  $('#pv-ok', el).onclick = async () => {
+    rows.forEach((r, i) => { const v = parseFloat($(`[data-r="${i}"]`, el).value); if (!isNaN(v)) r.r = Math.max(0, Math.min(10, v)); });
+    const missing = rows.filter(r => !r.pick);
+    if (missing.length) return toast(`Elegí quién es: ${missing.map(r => r.name).join(', ')}`, 4000);
+    const b = $('#pv-ok', el); b.disabled = true; b.textContent = 'Guardando…';
+    const al = aliases(); let n = 0;
+    try {
+      for (const r of rows){
+        if (r.pick === '__skip') continue;
+        let id = r.pick;
+        if (id === '__new'){ const nm = r.name.charAt(0).toUpperCase() + r.name.slice(1); id = await rpc('fc_member_save', { ...P(), p_team: S.teamId, p_id: null, p: { name: nm, guest: true } }); }
+        if (!r.auto && id) al[normTxt(r.name).replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim()] = id;
+        const cur = st.find(z => z.member_id === id), p = { played: true, dt_rating: r.r };
+        if (r.goals && !(cur && cur.official)) p.goals = r.goals;
+        await rpc('fc_stats_save', { ...P(), p_match: matchId, p_member: id, p }); n++;
+      }
+      LS.set(aliasKey(), JSON.stringify(al));
+      closeSheet(); await refresh(); toast(`Listo: ${plural(n, 'puntaje', 'puntajes')} guardados`, 3000);
+    } catch(e){ toast(e.message, 3500); b.disabled = false; b.textContent = `Guardar ${rows.length} puntajes`; }
+  };
+}
+
 function rateSheet(matchId){
   const x = S.T.matches.find(y => y.id === matchId), rater = canRate(x);
   const st = S.T.stats.filter(s => s.match_id === matchId);
@@ -1524,6 +1613,7 @@ function rateSheet(matchId){
   const rows = [...players().map(m => ({ m, s: st.find(s => s.member_id === m.id) })).sort((a,b) => rank(b) - rank(a) || a.m.name.localeCompare(b.m.name)),
     ...guests().filter(g => st.some(s => s.member_id === g.id && s.played)).map(m => ({ m, s: st.find(s => s.member_id === m.id) })).sort((a,b) => a.m.name.localeCompare(b.m.name))];
   const el = openSheet(`<h2>${rater ? 'Puntuar' : 'Cargar números'}</h2><p class="muted">vs ${esc(x.opponent)} · ${rater ? 'del 0 al 10. ' : ''}Tocá el nombre para cargar goles o tarjetas.</p>
+    ${rater ? '<button class="btn ghost sm section" id="rt-paste" style="width:100%">Pegar la lista de puntajes de WhatsApp</button>' : ''}
     <div class="card section" style="padding:0 14px" id="rt">${rows.map(({ m, s }) => {
       const on = s ? s.played : voy.includes(m.id);
       return `<div class="dtrow" data-id="${m.id}" data-on="${on ? 1 : 0}">
@@ -1533,6 +1623,8 @@ function rateSheet(matchId){
     <button class="btn ghost sm section" id="rt-guest" style="width:100%">＋ Sumar un invitado${guests().length ? ' (de los ya anotados o uno nuevo)' : ''}</button>
     ${rater ? '<button class="btn section" id="rt-ok">Guardar puntajes</button>' : ''}`);
   $('#rt-guest', el).onclick = () => { closeSheet(); setTimeout(() => guestSheet(matchId), 80); };
+  const rp = $('#rt-paste', el); if (rp) rp.onclick = () => { closeSheet(); setTimeout(() => pasteRatingsSheet(matchId), 80); };
+  addSearch(el, '#rt .dtrow', $('#rt', el));
   const limits = {}; rows.forEach(({ m }) => limits['rt-' + m.id] = [0, 10, .5, 6]);
   bindSteppers(el, limits);
   $$('[data-edit]', el).forEach(b => b.onclick = () => { closeSheet(); setTimeout(() => myStatsSheet(matchId, b.dataset.edit), 80); });
@@ -1863,6 +1955,7 @@ function slotSheet(i){
     ${cur && canBoard() && PZ.mode !== 'sug' ? `<label class="field section"><span>Indicación para ${esc(cur.name)}</span><input class="input" id="sl-n" maxlength="80" value="${esc(PZ.notes[cur.id] || '')}" placeholder="Ej: vos marcás al 10"></label><button class="btn sm ghost" id="sl-ns" style="margin-top:8px">Guardar indicación</button>` : ''}
     <div class="list section">${list.map(m => { const at = inSlot(m.id); return `<button class="lrow" data-id="${m.id}"><span class="av" style="background:${avColor(m.name)}">${m.number ?? esc(initials(m.name))}</span><span class="t"><b>${esc(m.name)}</b><small>${(m.positions || []).join(' · ') || 'Sin posición'}${m.status !== 'ok' ? ` · ${STATUS[m.status][0]} ${STATUS[m.status][1]}` : ''}</small></span>${at === i ? '<span class="pill ok">Acá</span>' : at >= 0 ? '<span class="pill">En cancha</span>' : ''}</button>`; }).join('')}</div>
     ${cur ? '<button class="link danger section" id="sl-x" style="display:block;margin:16px auto 0">Dejar vacío</button>' : ''}`);
+  addSearch(el, '.list .lrow', $('.list', el));
   $$('.lrow', el).forEach(b => b.onclick = () => {
     const id = b.dataset.id, at = inSlot(id);
     if (at >= 0 && at !== i) PZ.slots[at].m = s.m; // intercambio
@@ -2557,6 +2650,7 @@ function attendanceSheet(t){
     <div class="card section" style="padding:0 14px" id="at">${rows.map(m => { const l = tlog(t.id, m.id); return `<div class="dtrow"><span class="who"><span class="av" style="width:32px;height:32px;font-size:13px;background:${avColor(m.name)}">${esc(initials(m.name))}</span><span style="min-width:0"><b style="display:block">${esc(m.name)}</b><span class="mini">${l ? TSTATUS[l.status][1] + (l.reason ? ' · ' + esc(l.reason) : '') : 'Sin respuesta'}</span></span></span>
       <div class="seg" data-m="${m.id}" style="width:150px"><button type="button" data-v="presente" class="${state[m.id] === 'presente' ? 'on' : ''}">✅</button><button type="button" data-v="ausente" class="${state[m.id] === 'ausente' ? 'on' : ''}">❌</button></div></div>`; }).join('')}</div>
     <button class="btn section" id="at-ok">Guardar asistencia</button>`);
+  addSearch(el, '#at .dtrow', $('#at', el));
   $$('#at .seg', el).forEach(sg => $$('button', sg).forEach(b => b.onclick = () => { const id = sg.dataset.m; state[id] = state[id] === b.dataset.v ? null : b.dataset.v; $$('button', sg).forEach(x => x.classList.toggle('on', x.dataset.v === state[id])); }));
   $('#at-ok', el).onclick = async () => {
     const b = $('#at-ok', el); b.disabled = true; b.textContent = 'Guardando…';
@@ -2650,6 +2744,7 @@ function renderPlantel(){
         : '<p class="small muted">Cuando juegue alguien de afuera, sumalo desde la planilla del partido y puntualo. Queda acá para volver a llamarlo cuando falte gente.</p>'}
     </div>
     ${dt ? inviteCard() : ''}`;
+  addSearch($('#main'), '#main [data-p]', $('#main .cards'), 'Buscar en el plantel');
   $$('[data-p]').forEach(b => b.onclick = () => playerSheet(b.dataset.p));
   const pg = $('#pl-guest'); if (pg) pg.onclick = () => guestSheet(null);
   const ad = $('#pl-add'); if (ad) ad.onclick = addPlayerSheet;
@@ -2818,6 +2913,7 @@ function tablaRanking(box){
       : `<div class="card empty muted">Todavía no hay datos para este ranking.</div>`}
     ${!showR ? `<p class="small muted" style="margin-top:12px">🔒 Los puntajes del DT son privados en este equipo: cada uno ve el suyo en Inicio.</p>` : ''}`;
   $$('[data-s]', box).forEach(b => b.onclick = () => { S.sortBy = b.dataset.s; tablaRanking(box); });
+  addSearch(box, '.list .lrow[data-p]', $('.list', box));
   $$('[data-p]', box).forEach(b => b.onclick = () => playerSheet(b.dataset.p));
 }
 // La vista del Excel: jugadores × partidos.
@@ -2838,6 +2934,7 @@ function tablaPlanilla(box){
     <tbody>${rows.map(({ m, a }) => `<tr><td class="l ${m.id === meId() ? 'me' : ''}">${esc(m.name)}${m.guest ? ' <span class="mini">(inv.)</span>' : ''}</td><td>${a.pj}</td>${showR ? `<td><b>${fmt1(a.avg)}</b></td>` : ''}<td>${a.goals || '·'}</td><td>${a.assists || '·'}</td>${ms.map(x => `<td>${cell(m, x)}</td>`).join('')}</tr>`).join('')}</tbody></table></div>
     <p class="tiny muted" style="margin-top:8px">Deslizá para el costado para ver todos los partidos. ⚽ = hizo gol.</p>
     ${isDT() ? `<button class="btn ghost sm" id="csv" style="margin-top:12px">⬇️ Descargar como Excel (CSV)</button>` : ''}`;
+  addSearch(box, 'table.pl tbody tr', $('.sheetwrap', box));
   const c = $('#csv', box); if (c) c.onclick = () => {
     const head = ['Jugador','PJ','Promedio','Goles','Asistencias', ...ms.map((x,i) => `Partido ${i+1} (${x.opponent})`)];
     const lines = rows.map(({ m, a }) => [m.name, a.pj, a.avg != null ? fmt1(a.avg) : '', a.goals, a.assists, ...ms.map(x => { const s = S.T.stats.find(z => z.match_id === x.id && z.member_id === m.id); return s && s.played ? (s.dt_rating != null ? fmt1(+s.dt_rating) : 'J') : ''; })]);
@@ -3319,6 +3416,7 @@ function pkAddSheet(k){
   const el = openSheet(`<h2>Sumar a alguien</h2><p class="muted">Como en el grupo: anotás a otro y queda en la lista.</p>
     <form class="row section" id="pa"><input class="input" id="pa-n" maxlength="30" placeholder="Nombre de alguien nuevo"><button class="btn sm" type="submit">Sumar</button></form>
     <div class="list section">${rest.map(m => `<button class="lrow" data-m="${m.id}" style="padding:8px 12px"><span class="av" style="width:32px;height:32px;font-size:13px;background:${avColor(m.name)}">${esc(initials(m.name))}</span><span class="t"><b>${esc(m.name)}</b><small>${plural(pkStats(m.id).pj, 'picado', 'picados')}${m.guest ? ' · invitado' : ''}</small></span><span class="pill ok">＋</span></button>`).join('')}</div>`);
+  addSearch(el, '[data-m]', $('[data-m]', el) && $('[data-m]', el).parentNode);
   $$('[data-m]', el).forEach(b => b.onclick = () => { closeSheet(); pkCall('fc_pickup_join', { p_pickup: k.id, p_member: b.dataset.m, p_status: 'va' }, `${pkName(b.dataset.m)} adentro`); });
   $('#pa', el).onsubmit = (e) => { e.preventDefault(); const n = $('#pa-n', el).value.trim(); if (!n) return; closeSheet(); pkCall('fc_pickup_guest', { p_pickup: k.id, p_name: n }, `${n} adentro`); };
 }
