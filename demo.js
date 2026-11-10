@@ -17,7 +17,7 @@
 
   /* ---------- El equipo ---------- */
   const team = { id: 'demo', name: 'Los Halcones', emoji: '🦅', sport: 'futbol', players_on_field: 11, category: 'Liga de ejemplo · Primera',
-    ratings_public: true, code: 'DEMO01', dt_code: 'DEMODT', kind: 'torneo', card_mode: 'staff', board_suggest: true, min_players: 14, league: true,
+    ratings_public: true, code: 'DEMO01', dt_code: 'DEMODT', kind: 'torneo', card_mode: 'staff', board_suggest: true, auto_cards: true, min_players: 14, league: true,
     pinned: { id: 'VguvE8aiWd4', title: 'Activación antes del partido', note: 'Hacela el viernes, 20 minutos', by: 'Profe Gus', at: iso(now) } };
   const P = [
     ['Tano', 1, 'ARQ', 'der'], ['Colo', 2, 'DEF', 'der'], ['Ruso', 6, 'DEF', 'izq'], ['Fede', 4, 'LAT', 'der'], ['Mati', 3, 'LAT', 'izq'],
@@ -233,8 +233,10 @@
       let m = a.p_id && members.find(z => z.id === a.p_id);
       if (!m){ m = { id: id('m'), name: a.p.name, role: 'jugador', plays: true, number: null, positions: [], foot: null, status: 'ok', status_until: null, status_note: null, claimed: false, active: true, overall: null, attrs: {}, guest: false }; members.push(m); }
       for (const [k, v] of Object.entries(a.p)) m[k] = k === 'number' || k === 'overall' ? (v === '' || v == null ? null : +v) : (v === '' ? null : v);
+      if (('attrs' in a.p || 'overall' in a.p) && !('card_locked' in a.p)) m.card_locked = true;
       return m.id;
     },
+    fc_card_auto: (a) => { const m = members.find(z => z.id === a.p_member); if (m) m.card_locked = false; return null; },
     fc_lineup_save: (a) => { let l = a.p_id && lineups.find(z => z.id === a.p_id); if (!l){ l = { id: id('l'), match_id: null }; lineups.unshift(l); } Object.assign(l, a.p, { updated_at: iso(new Date()) }); return l.id; },
     fc_lineup_delete: (a) => { const i = lineups.findIndex(l => l.id === a.p_id); if (i >= 0) lineups.splice(i, 1); return null; },
     fc_trainings_list: () => ({ trainings: TR.trainings.map(t => ({ ...t })), logs: TR.logs.map(l => ({ ...l, has_photo: !!l.photo, photo: undefined })) }),

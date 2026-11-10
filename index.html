@@ -740,6 +740,17 @@ function agg(mid){
   };
 }
 // Puntaje sugerido (1–100) a partir de lo que pasó en la cancha. El DT decide si lo usa.
+const autoCards = () => S.T.team.auto_cards !== false;
+const isAutoCard = (m) => autoCards() && m && !m.card_locked && m.plays !== false;
+function autoNoteHTML(m){
+  if (!autoCards() || !m) return '';
+  if (m.card_locked) return `<div class="banner section"><span>Carta ajustada a mano: no se actualiza sola.</span>${isAdmin() ? '<button class="btn sm ghost" id="ca-auto" style="margin-left:auto;box-shadow:none">Volver a automática</button>' : ''}</div>`;
+  return `<p class="small muted" style="text-align:center;margin-top:8px">Carta automática: se actualiza sola con los puntajes, goles, asistencias y dónde juega en la pizarra${m.card_auto_at ? ` · última vez ${fmtWhen(m.card_auto_at, false)}` : ''}.</p>`;
+}
+function bindAutoBtn(el, id){
+  const b = $('#ca-auto', el); if (!b) return;
+  b.onclick = async () => { b.disabled = true; try { await rpc('fc_card_auto', { ...P(), p_member: id }); closeSheet(); await refresh(); toast('Carta automática otra vez'); } catch(e){ toast(e.message); b.disabled = false; } };
+}
 function suggested(mid){
   const a = agg(mid);
   if (a.rated < 2) return null;
@@ -2773,7 +2784,8 @@ function playerSheet(id){
       ${m.foot ? `<span class="pill">Pie ${{ der: 'derecho', izq: 'izquierdo', ambos: 'ambos' }[m.foot]}</span>` : ''}
     </div>
     ${m.status_note ? `<p class="small muted" style="text-align:center;margin-top:6px">${esc(m.status_note)}</p>` : ''}
-    ${dt && sug != null ? `<div class="banner sky section">📈 <span>Según sus partidos, la app sugiere <b>${sug}</b>${m.overall != null ? ` (${sug - m.overall >= 0 ? '+' : ''}${sug - m.overall})` : ''}.</span>${m.overall !== sug ? `<button class="btn sm sky" id="ps-acc" style="margin-left:auto;box-shadow:none">Usar</button>` : ''}</div>` : ''}
+    ${autoNoteHTML(m)}
+    ${dt && sug != null && !isAutoCard(m) ? `<div class="banner sky section">📈 <span>Según sus partidos, la app sugiere <b>${sug}</b>${m.overall != null ? ` (${sug - m.overall >= 0 ? '+' : ''}${sug - m.overall})` : ''}.</span>${m.overall !== sug ? `<button class="btn sm sky" id="ps-acc" style="margin-left:auto;box-shadow:none">Usar</button>` : ''}</div>` : ''}
     <div class="kpis section"><div><b>${a.pj}</b><span>Partidos</span></div><div><b>${a.avg != null ? fmt1(a.avg) : '–'}</b><span>Puntaje</span></div><div><b>${a.goals}</b><span>Goles</span></div><div><b>${a.assists}</b><span>Asist.</span></div></div>
     ${m.guest ? `<div class="banner sky section">🤝 <span>Invitado. ${isAdmin() && m.contact ? '' : 'Jugó con nosotros y quedó guardado para volver a llamarlo.'}</span>${isAdmin() && m.contact ? `<a class="btn sm" style="margin-left:auto;text-decoration:none" href="${waTo(m.contact, `Hola ${m.name}! ¿Te prendés a jugar con ${S.T.team.name}${nextMatch() ? ` el ${fmtWhen(nextMatch().starts_at)}` : ''}?`)}" target="_blank" rel="noopener">Invitar</a>` : ''}</div>` : ''}
     ${officialOf(m) ? `<p class="small muted" style="margin-top:8px;text-align:center">🏆 En el torneo: ${plural(officialOf(m).pj,'partido','partidos')} · ⚽ ${officialOf(m).goles}${officialOf(m).amarillas ? ` · 🟨 ${officialOf(m).amarillas}` : ''}${officialOf(m).rojas ? ` · 🟥 ${officialOf(m).rojas}` : ''}${officialOf(m).figura ? ` · ⭐ ${officialOf(m).figura}` : ''}</p>` : ''}
@@ -2782,11 +2794,12 @@ function playerSheet(id){
     ${a.figs || a.yellow || a.red ? `<p class="small muted" style="margin-top:8px;text-align:center">${a.figs ? `⭐ ${plural(a.figs,'vez figura','veces figura')}  ` : ''}${a.yellow ? `🟨 ${a.yellow}  ` : ''}${a.red ? `🟥 ${a.red}` : ''}</p>` : ''}
     ${hist.length ? `<div class="section"><div class="mini" style="margin-bottom:8px">Partido a partido</div><div class="list">${hist.map(({ x, s }) => `<div class="lrow" style="padding:8px 12px"><span class="t"><b>vs ${esc(x.opponent)}</b><small>${s.goals ? `⚽${s.goals} ` : ''}${s.assists ? `🅰️${s.assists} ` : ''}${s.yellow ? '🟨'.repeat(s.yellow) : ''}${s.red ? '🟥' : ''}${s.self_rating != null && (dt || self) ? ` · se puso ${fmt1(+s.self_rating)}` : ''}</small></span>${s.dt_rating != null ? `<span class="rate ${rateCls(+s.dt_rating)}">${fmt1(+s.dt_rating)}</span>` : ''}</div>`).join('')}</div></div>` : ''}
     <div class="section stack">
-      ${canEditCard(m) ? `<button class="btn" id="ps-card">🃏 ${m.overall != null ? 'Ajustar la carta' : 'Armar la carta'}</button>` : ''}
+      ${canEditCard(m) ? `<button class="btn ${isAutoCard(m) ? 'ghost' : ''}" id="ps-card">🃏 ${isAutoCard(m) ? 'Ajustar a mano' : m.overall != null ? 'Ajustar la carta' : 'Armar la carta'}</button>` : ''}
       ${adm || self ? `<button class="btn ghost" id="ps-edit">${self ? '✏️ Editar mi ficha' : '✏️ Editar ficha'}</button>` : ''}
       ${adm || self ? `<button class="btn ghost" id="ps-st">${STATUS[m.status][0]} Cambiar estado</button>` : ''}
     </div>`);
   const acc = $('#ps-acc', el); if (acc) acc.onclick = async () => { try { await rpc('fc_member_save', { ...P(), p_team: S.teamId, p_id: id, p: { overall: sug } }); closeSheet(); await refresh(); toast(`${m.name}: ${sug}`); } catch(e){ toast(e.message); } };
+  bindAutoBtn(el, id);
   const ed = $('#ps-edit', el); if (ed) ed.onclick = () => { closeSheet(); setTimeout(() => editPlayerSheet(id), 80); };
   const cd = $('#ps-card', el); if (cd) cd.onclick = () => { closeSheet(); setTimeout(() => cardSheet(id), 80); };
   const st = $('#ps-st', el); if (st) st.onclick = () => { closeSheet(); setTimeout(() => statusSheet(m), 80); };
@@ -2802,6 +2815,7 @@ function cardSheet(id){
   at().forEach(([k]) => { vals[k] = m.attrs && m.attrs[k] != null ? m.attrs[k] : (sug || 65); });
   const el = openSheet(`<h2>${self ? 'Mi carta' : 'Carta de ' + esc(m.name)}</h2>
     <p class="muted">${self && !isDT() ? 'Con criterio, eh: el DT la ve y la puede corregir.' : 'Movés las barras y listo.'}${sug != null ? ` Según sus partidos, la app sugiere <b>${sug}</b>.` : ''}</p>
+    ${isAutoCard(m) ? '<div class="banner sky section"><span>Esta carta hoy se actualiza sola. Si la guardás a mano, queda fija hasta que la vuelvas a poner en automática.</span></div>' : m.card_locked && autoCards() && isAdmin() ? '<div class="banner section"><span>Ajustada a mano.</span><button class="btn sm ghost" id="ca-auto" style="margin-left:auto;box-shadow:none">Volver a automática</button></div>' : ''}
     <div class="section" id="cs-prev"></div>
     <div class="field section"><span>Posición principal</span><div class="chips" id="cs-p">${POS.map(([k,l]) => `<button type="button" class="chip ${pos === k ? 'on' : ''}" data-k="${k}" title="${l}">${k}</button>`).join('')}</div></div>
     <div class="field section"><span>También juega de</span><div class="chips" id="cs-al">${POS.map(([k,l]) => `<button type="button" class="chip ${also.includes(k) && k !== pos ? 'on' : ''}" data-k="${k}" title="${l}">${k}</button>`).join('')}</div><div class="hint">Sirve para que la app sugiera los cambios durante el partido.</div></div>
@@ -2818,6 +2832,7 @@ function cardSheet(id){
   drawAlso();
   $$('#cs-p .chip', el).forEach(b => b.onclick = () => { pos = b.dataset.k; also = also.filter(x => x !== pos); drawAlso(); $$('#cs-p .chip', el).forEach(x => x.classList.toggle('on', x === b)); at().forEach(([k]) => { if (vals[k] == null) vals[k] = sug || 65; }); drawA(); prev(); });
   $('#cs-n', el).oninput = prev;
+  bindAutoBtn(el, id);
   drawA(); prev();
   $('#cs-ok', el).onclick = async () => {
     const attrs = Object.fromEntries(at().map(([k]) => [k, vals[k]]));
@@ -3626,7 +3641,7 @@ function inviteSheet(){
 }
 function settingsSheet(){
   const t = S.T.team;
-  let size = t.players_on_field, pub = t.ratings_public, kind = t.kind || 'torneo', day = t.usual_day ?? 4, bs = t.board_suggest !== false;
+  let size = t.players_on_field, pub = t.ratings_public, kind = t.kind || 'torneo', day = t.usual_day ?? 4, bs = t.board_suggest !== false, ac = t.auto_cards !== false;
   const el = openSheet(`<h2>Ajustes del equipo</h2>
     <form class="stack section" id="st">
       <div class="grid2" style="grid-template-columns:80px 1fr"><label class="field"><span>Escudo</span><input class="input" id="st-e" maxlength="4" value="${esc(t.emoji)}" style="text-align:center;font-size:24px"></label>
@@ -3645,6 +3660,7 @@ function settingsSheet(){
       <div class="field"><span>¿Qué juegan?</span><div class="seg" id="st-f">${FORMATS.map(([n,l]) => `<button type="button" data-n="${n}" class="${n === size ? 'on' : ''}">${l.replace('Fútbol ','F')}</button>`).join('')}</div><div class="hint">Cambia las formaciones de la pizarra.</div></div>
       <div class="field" id="st-minf" ${kind === 'amistosos' ? 'hidden' : ''}><span>Mínimo de confirmados</span><div class="row" style="gap:12px;align-items:center">${stepperHTML('st-min', t.min_players ?? (t.players_on_field + 3), 'confirmados')}<span class="small muted">A 2 días del partido, si hay menos, la app les avisa a los que no respondieron.</span></div></div>
       <div class="field"><span>¿Quién arma las cartas?</span><div class="seg" id="st-cm">${[['dt','Solo el DT'],['staff','DT y ayudantes'],['self','Cada uno la suya']].map(([k,l]) => `<button type="button" data-k="${k}" class="${cardMode() === k ? 'on' : ''}">${l}</button>`).join('')}</div><div class="hint">Si cada uno arma la suya, el DT igual las ve y las puede corregir.</div></div>
+      <div class="field"><span>Cartas automáticas</span><div class="seg" id="st-ac"><button type="button" data-v="1" class="${ac ? 'on' : ''}">Sí, que se actualicen solas</button><button type="button" data-v="0" class="${!ac ? 'on' : ''}">No, las armo yo</button></div><div class="hint">La media, los atributos y las posiciones se recalculan con los puntajes, goles, asistencias, cuánto juega cada uno y dónde lo ponés en la pizarra. Si ajustás una carta a mano, esa queda fija.</div></div>
       <div class="field"><span>¿El plantel puede sugerir en la pizarra?</span><div class="seg" id="st-bs"><button type="button" data-v="1" class="${bs ? 'on' : ''}">Sí</button><button type="button" data-v="0" class="${!bs ? 'on' : ''}">No</button></div><div class="hint">Cada uno puede comentar o proponer su equipo. Lo ves al lado de la pizarra y decidís vos.</div></div>
       <div class="field"><span>¿Quién ve los puntajes del DT?</span><div class="seg" id="st-p"><button type="button" data-v="1" class="${pub ? 'on' : ''}">Todo el plantel</button><button type="button" data-v="0" class="${!pub ? 'on' : ''}">Cada uno el suyo</button></div><div class="hint">Por defecto los ve todo el equipo. Si preferís, cada uno ve solo el suyo.</div></div>
       <button class="btn" type="submit">Guardar</button>
@@ -3655,6 +3671,7 @@ function settingsSheet(){
   $('#st-lg', el).onclick = () => { closeSheet(); setTimeout(leagueSetSheet, 80); };
   $$('#st-f button', el).forEach(b => b.onclick = () => { size = +b.dataset.n; $$('#st-f button', el).forEach(x => x.classList.toggle('on', x === b)); });
   bindSteppers(el, { 'st-min': [5, 30, 1] });
+  $$('#st-ac button', el).forEach(b => b.onclick = () => { ac = b.dataset.v === '1'; $$('#st-ac button', el).forEach(x => x.classList.toggle('on', x === b)); });
   $$('#st-bs button', el).forEach(b => b.onclick = () => { bs = b.dataset.v === '1'; $$('#st-bs button', el).forEach(x => x.classList.toggle('on', x === b)); });
   $$('#st-k button', el).forEach(b => b.onclick = () => { kind = b.dataset.k; $$('#st-k button', el).forEach(x => x.classList.toggle('on', x === b)); $('#st-am', el).hidden = kind !== 'amistosos'; $('#st-minf', el).hidden = kind === 'amistosos'; });
   $$('#st-d .chip', el).forEach(b => b.onclick = () => { day = +b.dataset.d; $$('#st-d .chip', el).forEach(x => x.classList.toggle('on', x === b)); });
@@ -3662,7 +3679,7 @@ function settingsSheet(){
   $$('#st-cm button', el).forEach(b => b.onclick = () => { cm = b.dataset.k; $$('#st-cm button', el).forEach(x => x.classList.toggle('on', x === b)); });
   $$('#st-p button', el).forEach(b => b.onclick = () => { pub = b.dataset.v === '1'; $$('#st-p button', el).forEach(x => x.classList.toggle('on', x === b)); });
   const save = async (p, msg) => { try { await rpc('fc_team_settings', { ...P(), p_team: S.teamId, p }); closeSheet(); await loadMe(); await refresh(); toast(msg); } catch(e){ toast(e.message); } };
-  $('#st', el).onsubmit = (e) => { e.preventDefault(); if (size !== t.players_on_field) PZ = null; save({ name: $('#st-n', el).value.trim(), emoji: $('#st-e', el).value.trim(), category: $('#st-c', el).value.trim(), players_on_field: size, ratings_public: pub, card_mode: cm, min_players: stepVal(el, 'st-min'), board_suggest: bs,
+  $('#st', el).onsubmit = (e) => { e.preventDefault(); if (size !== t.players_on_field) PZ = null; save({ name: $('#st-n', el).value.trim(), emoji: $('#st-e', el).value.trim(), category: $('#st-c', el).value.trim(), players_on_field: size, ratings_public: pub, card_mode: cm, min_players: stepVal(el, 'st-min'), board_suggest: bs, auto_cards: ac,
     kind, ...(kind === 'amistosos' ? { place: $('#st-pl', el).value.trim(), place_url: $('#st-pu', el).value.trim(), usual_day: day, usual_time: $('#st-h', el).value, usual_size: $('#st-cu', el).value, price: $('#st-pr', el).value, alias: $('#st-al', el).value.trim() } : {}) }, 'Ajustes guardados'); };
   $('#st-nc', el).onclick = () => save({ new_code: true }, 'Código de jugadores nuevo');
   $('#st-nd', el).onclick = () => save({ new_dt_code: true }, 'Código de DT nuevo');
