@@ -496,6 +496,9 @@ table.pl th.l,table.pl td.l{border-right-width:1px}
 .tok.c-voy .mc,.tok.c-no .mc,.tok.c-duda .mc,.tok.c-none .mc{clip-path:none}
 .catpill{font-size:10.5px;font-weight:900;letter-spacing:.12em;text-transform:uppercase;padding:4px 8px;border-radius:4px;background:linear-gradient(155deg,var(--c1,#E7EAE8),var(--c2,#C3CAC6));color:var(--ink,#1D2521)}
 .catpill.bronce{--c1:#E2B28A;--c2:#9C6136;--ink:#2E1708}.catpill.plata{--c1:#F4F6F7;--c2:#AEB8BF;--ink:#1C252B}.catpill.oro{--c1:#F7E08A;--c2:#C99A1E;--ink:#2B1E00}.catpill.leyenda{--c1:#2A2A2A;--c2:#050505;--ink:#E8C873}
+.steps{margin:6px 0 0;padding-left:0;list-style:none;counter-reset:st}
+.steps li{counter-increment:st;position:relative;padding:6px 0 6px 38px;font-size:15px;line-height:1.35}
+.steps li::before{content:counter(st);position:absolute;left:0;top:4px;width:26px;height:26px;border-radius:50%;background:var(--grass);color:#fff;font-weight:900;font-size:14px;display:grid;place-items:center}
 </style>
 </head>
 <body>
@@ -807,6 +810,8 @@ async function boot(){
   if (q.get('team')) S.teamId = q.get('team');
   if (q.get('m')){ S.tab = 'partidos'; S.matchId = q.get('m'); }
   if (q.get('t')){ S.tab = 'entrenos'; S.trainId = q.get('t'); }
+  // Links de "Voy / No voy" del mensaje al grupo
+  if (q.get('r')) S.pendingRsvp = { a: { voy: 'voy', no: 'no_voy', duda: 'duda' }[q.get('r')], p: (q.get('p') || '').slice(0, 12) };
   if (q.toString()) history.replaceState(null, '', location.pathname);
   if (demo){ startDemo(demo === 'jugador' ? 'jugador' : 'dt'); return; }
   if (!S.token){ S.pendingJoin ? renderQuickJoin(S.pendingJoin) : renderWelcome(); return; }
@@ -824,6 +829,17 @@ async function afterLogin(){
   try { await loadTeam(); } catch(e){ renderOffline(e.message); return; }
   await pushCheck();
   render();
+  await doPendingRsvp();
+}
+// Responde la convocatoria que vino en el link (después de entrar)
+async function doPendingRsvp(){
+  const pr = S.pendingRsvp; if (!pr || !S.T) return; S.pendingRsvp = null;
+  const m = member(meId()); if (!pr.a || !m) return;
+  const x = (pr.p && S.T.matches.find(y => y.id.startsWith(pr.p))) || nextMatch();
+  if (!x) return toast('No hay partido para responder');
+  if (x.played) return toast(`El partido vs ${x.opponent} ya se jugó`);
+  if (pr.a === 'no_voy') return reasonSheet(x.id);
+  await answer(x.id, pr.a);
 }
 function renderOffline(msg){
   $('#app').innerHTML = `<div class="welcome empty"><div class="big">📡</div><h2>No hay señal</h2><p class="muted" style="margin:8px 0 18px">${esc(msg)}</p><button class="btn" onclick="location.reload()">Probar de nuevo</button></div>`;
@@ -865,6 +881,7 @@ async function renderQuickJoin(code){
     <div style="font-size:44px;line-height:1">${esc(t.emoji)}</div>
     <div class="mini" style="margin-top:10px">Te invitaron a</div>
     <h1 style="margin-top:6px">${esc(t.name)}</h1>
+    ${S.pendingRsvp && S.pendingRsvp.a ? `<div class="banner ${S.pendingRsvp.a === 'voy' ? 'ok' : S.pendingRsvp.a === 'duda' ? 'gold' : 'coral'}" style="margin:12px 0 0;justify-content:center"><span>Tocá tu nombre y quedás anotado como <b>${{ voy: 'Voy', duda: 'Duda', no_voy: 'No voy' }[S.pendingRsvp.a]}</b>.</span></div>` : ''}
     <p class="muted" style="font-size:17px;margin:10px 0 18px">${t.staff ? 'Entrás como <b>cuerpo técnico</b>. ' : ''}Tocá tu nombre y listo: no hace falta crear usuario.</p>
     ${pl.length || staffList.length ? `<div class="section-title"><h2>¿Quién sos?</h2><span class="small muted">${t.taken ? `Ya entraron ${t.taken}` : ''}</span></div>
       ${pl.length > 8 ? '<input class="input" id="qj-q" placeholder="Buscá tu nombre" autocomplete="off" style="margin-bottom:10px">' : ''}
@@ -880,6 +897,7 @@ async function renderQuickJoin(code){
       S.token = r.token; LS.set('casaca_token', r.token); LS.del('casaca_salio'); S.teamId = r.team; LS.set('casaca_team', r.team); S.pendingJoin = null;
       await loadMe(); await loadTeam(); S.tab = 'inicio'; closeSheet(); render(); scrollTo(0, 0);
       toast(`¡Listo, ${label}! Ya estás en ${t.name} ${t.emoji}`, 3500);
+      await doPendingRsvp();
     } catch(e){ toast(e.message, 3500); if (e.code === 'YA_RECLAMADO') renderQuickJoin(code); }
   };
   $$('[data-qj]').forEach(b => b.onclick = () => {
@@ -963,7 +981,7 @@ async function joinFlow(code){
   catch(e){ toast(e.message, 3500); try { await loadTeam(); } catch(_){} render(); return; }
   if (S.me.teams.some(x => x.id === t.id)){
     if (t.staff) await rpc('fc_join', { ...P(), p_code: code }).catch(() => {});
-    S.teamId = t.id; await loadMe(); await loadTeam(); render(); toast(`Ya estás en ${t.name}`); return;
+    S.teamId = t.id; await loadMe(); await loadTeam(); render(); if (S.pendingRsvp) return doPendingRsvp(); toast(`Ya estás en ${t.name}`); return;
   }
   const el = openSheet(`<h2>${esc(t.emoji)} ${esc(t.name)}</h2>
     <p class="muted">${t.staff ? 'Entrás como <b>cuerpo técnico</b>. ' : ''}${t.free.length ? 'El DT ya cargó el plantel. Tocá tu nombre para quedarte con tu ficha y tu historial.' : 'Sumate al plantel.'}</p>
@@ -979,6 +997,7 @@ async function joinFlow(code){
       LS.set('casaca_team', S.teamId);
       closeSheet(); await loadMe(); await loadTeam(); S.tab = 'inicio'; render();
       toast(`¡Bienvenido a ${t.name}! ${t.emoji}`);
+      await doPendingRsvp();
     } catch(e){ toast(e.message, 3500); }
   };
   $$('#claim .lrow', el).forEach(b => b.onclick = () => done({ p_claim: b.dataset.id }));
@@ -1168,6 +1187,8 @@ function postMatchHTML(){
     const st = S.T.stats.filter(s => s.match_id === x.id && s.played), sin = st.filter(s => s.dt_rating == null).length;
     if (!st.length || sin) items.push(`<button class="lrow" data-post="rate:${x.id}"><span style="font-size:26px">⭐</span><span class="t"><b>Puntuá vs ${esc(x.opponent)}</b><small>${st.length ? `Te faltan ${plural(sin, 'jugador', 'jugadores')}` : 'Marcá quiénes jugaron y poneles puntaje'} · goles, asistencias y tarjetas también</small></span><span class="pill sky">Puntuar</span></button>`);
   });
+  playedMatches().filter(x => canMatch(x) && x.result_at && now - new Date(x.result_at) < 3 * 864e5 && !LS.get('casaca_sum_' + x.id))
+    .forEach(x => items.push(`<button class="lrow" data-post="sum:${x.id}"><span style="font-size:26px">📲</span><span class="t"><b>Mandá el resumen vs ${esc(x.opponent)}</b><small>Resultado, goles, la tabla y el próximo partido, listo para el grupo</small></span><span class="pill ok">Ver</span></button>`));
   return items.length ? `<div class="section"><div class="section-title"><h2>Después del partido</h2></div><div class="list">${items.join('')}</div></div>` : '';
 }
 // Lo primero que ve el jugador cuando hay partido y no respondió: ¿vas a estar?
@@ -1244,7 +1265,7 @@ function renderInicio(){
     return;
   }
   const a = agg(meId());
-  const pend = playedMatches().filter(x => !T.stats.some(s => s.match_id === x.id && s.member_id === meId())).slice(-3).reverse();
+  const pend = playedMatches().filter(x => !x.ext_id && !T.stats.some(s => s.match_id === x.id && s.member_id === meId())).slice(-3).reverse();
   const toVote = playedMatches().filter(x => votingOpen(x) && T.stats.some(s => s.match_id === x.id && s.member_id === meId() && s.played) && !T.votes.some(v => v.match_id === x.id && v.mine));
   const last = playedMatches().slice(-1)[0];
   const cnt = nx && callupCounts(nx);
@@ -1259,7 +1280,7 @@ function renderInicio(){
       ${nx.dt_member === meId() && !isDT() ? `<div class="count" style="margin-top:8px">📋 Este partido lo dirigís vos: armás la convocatoria, la pizarra y el resultado.</div>` : ''}
       ${m && m.plays ? `<div style="margin-top:14px">${rsvpButtons(nx, mine && mine.answer)}</div>` : ''}
       <div class="count"><i class="lg c-voy"></i>${cnt.voy} van <i class="lg c-duda" style="margin-left:8px"></i>${cnt.duda} dudan <i class="lg c-no" style="margin-left:8px"></i>${cnt.no} no van${cnt.pending.length ? ` <i class="lg c-none" style="margin-left:8px"></i>${cnt.pending.length} sin responder` : ''}</div>
-      <div class="row" style="gap:18px;margin-top:10px;flex-wrap:wrap"><button class="link" id="nx-open" style="color:#fff;text-decoration:underline">Ver convocatoria</button>${lgMatchOf(nx) ? '<button class="link" id="nx-rv" style="color:#fff;text-decoration:underline">🔎 Informe del rival</button>' : ''}</div>
+      <div class="row" style="gap:18px;margin-top:10px;flex-wrap:wrap"><button class="link" id="nx-open" style="color:#fff;text-decoration:underline">Ver convocatoria</button>${canMatch(nx) ? '<button class="link" id="nx-wa" style="color:#fff;text-decoration:underline">📲 Mensaje al grupo</button>' : ''}${lgMatchOf(nx) ? '<button class="link" id="nx-rv" style="color:#fff;text-decoration:underline">🔎 Informe del rival</button>' : ''}</div>
     </div>` : `<div class="card empty"><div class="big">🗓️</div><h3>No hay partidos en agenda</h3><p class="muted small" style="margin-top:4px">${isAdmin() ? 'Cargá el próximo y el plantel confirma desde acá.' : 'Cuando el DT cargue el próximo, confirmás desde acá.'}</p>${isAdmin() ? '<button class="btn sm" id="nx-new" style="margin-top:12px">＋ Cargar partido</button>' : ''}</div>`}
 
     ${nx && !isPicadito() ? boardHomeHTML(nx) : ''}
@@ -1274,8 +1295,9 @@ function renderInicio(){
       <p class="muted small" style="margin:-4px 0 10px">Goles, asistencias y tarjetas: cada uno carga lo suyo y el DT solo pone el puntaje.</p>
       <div class="list">${pend.map(x => `<button class="lrow" data-mine="${x.id}"><span style="font-size:24px">✍️</span><span class="t"><b>vs ${esc(x.opponent)}</b><small>${fmtWhen(x.starts_at, false)}</small></span><span class="pill gold">Cargar</span></button>`).join('')}</div></div>` : ''}
 
-    ${toVote.length ? `<div class="section"><div class="section-title"><h2>Votá la figura</h2></div>
-      <div class="list">${toVote.map(x => `<button class="lrow" data-vote="${x.id}"><span style="font-size:24px">⭐</span><span class="t"><b>vs ${esc(x.opponent)}</b><small>Cierra ${closesIn(x)}</small></span><span class="pill sky">Votar</span></button>`).join('')}</div></div>` : ''}
+    ${toVote.map(x => { const ps = T.stats.filter(s => s.match_id === x.id && s.played && s.member_id !== meId()).map(s => member(s.member_id)).filter(Boolean).sort((a, b) => a.name.localeCompare(b.name));
+      return `<div class="card section"><h3>⭐ ¿Quién fue la figura vs ${esc(x.opponent)}?</h3><p class="small muted" style="margin:2px 0 10px">Un toque y listo. Es secreto · cierra ${closesIn(x)}.</p>
+        <div class="chips" style="flex-wrap:wrap">${ps.map(m => `<button class="chip" data-fig="${x.id}:${m.id}">${esc(m.name)}</button>`).join('')}</div></div>`; }).join('')}
 
     ${m && m.plays ? `<div class="section"><div class="section-title"><h2>Mi temporada</h2><button class="link" id="my-card">Ver mi carta</button></div>
       <div class="kpis"><div><b>${a.pj}</b><span>Partidos</span></div><div><b>${fmt1(a.avg)}</b><span>Puntaje</span></div><div><b>${a.goals}</b><span>Goles</span></div><div><b>${a.assists}</b><span>Asist.</span></div></div>
@@ -1288,14 +1310,16 @@ function renderInicio(){
   const o = $('#nx-open'); if (o) o.onclick = () => openMatch(nx.id);
   $$('#hb-open, #hb-pitch').forEach(b => b.onclick = () => { S.tab = 'pizarra'; render(); scrollTo(0,0); });
   const npz = $('#nx-pz'); if (npz) npz.onclick = () => { S.tab = 'pizarra'; render(); scrollTo(0,0); };
-  $$('[data-post]').forEach(b => b.onclick = () => { const [k, id] = b.dataset.post.split(':'); k === 'res' ? resultSheet(id) : rateSheet(id); });
+  $$('[data-post]').forEach(b => b.onclick = () => { const [k, id] = b.dataset.post.split(':'); if (k === 'sum'){ const x = S.T.matches.find(y => y.id === id); return groupMsgSheet('Resumen para el grupo', postMatchText(x), () => { LS.set('casaca_sum_' + id, '1'); render(); }, 'Así queda. Mandalo al grupo de WhatsApp.'); } k === 'res' ? resultSheet(id) : rateSheet(id); });
   const rp = $('#rp-open'); if (rp) rp.onclick = () => { const lm = lgMatchOf(nx); rivalSheet(isUs(lm.home_id) ? lm.away_id : lm.home_id); };
+  const nw = $('#nx-wa'); if (nw) nw.onclick = () => groupMsgSheet('Mensaje al grupo', preMatchText(nx));
   const nr = $('#nx-rv'); if (nr) nr.onclick = () => { const lm = lgMatchOf(nx); rivalSheet(isUs(lm.home_id) ? lm.away_id : lm.home_id); };
   const nn = $('#nx-new'); if (nn) nn.onclick = () => matchEditSheet(null);
   const sf = $('#st-fix'); if (sf) sf.onclick = () => statusSheet(m);
   const mc = $('#my-card'); if (mc) mc.onclick = () => playerSheet(meId());
   $$('[data-mine]').forEach(b => b.onclick = () => myStatsSheet(b.dataset.mine, meId()));
   $$('[data-vote]').forEach(b => b.onclick = () => voteSheet(b.dataset.vote));
+  $$('[data-fig]').forEach(b => b.onclick = async () => { const [mid, vid] = b.dataset.fig.split(':'); b.disabled = true; try { await rpc('fc_vote', { ...P(), p_match: mid, p_voted: vid }); vibrate(15); toast(`Votaste a ${member(vid).name} ⭐`); await refresh(); } catch(e){ toast(e.message); b.disabled = false; } });
   bindTrainCards($('#main'));
   bindPinned($('#main'));
   bindFueguitos($('#main'));
@@ -1398,10 +1422,11 @@ function renderMatch(id){
       <div class="stack" style="margin-top:14px">
         ${[['voy','👍 Van'],['duda','🤔 Dudan'],['no_voy','🙅 No van']].map(([a,l]) => { const L = byAns(a); return L.length ? `<div><div class="mini" style="margin-bottom:6px">${l} (${L.length})</div><div class="list">${L.map(o => person(o)).join('')}</div></div>` : ''; }).join('')}
         ${cnt.pending.length ? `<div><div class="mini" style="margin-bottom:6px">⏳ Sin responder (${cnt.pending.length})</div><div class="list">${cnt.pending.map(m => person({ m })).join('')}</div>
-          ${dt ? `<a class="btn ghost sm" style="margin-top:10px;text-decoration:none" href="${wa(`⚽ ${T.team.name} vs ${x.opponent} · ${fmtWhen(x.starts_at)}\nFaltan confirmar: ${cnt.pending.map(m => m.name).join(', ')}.\nUn toque en La Casaca y listo: ${BASE}`)}" target="_blank" rel="noopener">📣 Empujón por WhatsApp</a>` : ''}</div>` : ''}
+</div>` : ''}
       </div>
       ${dt && guests().length ? `<div style="margin-top:16px"><div class="mini" style="margin-bottom:6px">🤝 ¿Falta gente? Invitados que ya jugaron</div><div class="list">${guests().map(g => ({ g, a: agg(g.id) })).sort((a,b) => (b.a.avg ?? -1) - (a.a.avg ?? -1)).map(({ g, a }) => `<div class="lrow" style="padding:8px 10px"><span class="t"><b>${esc(g.name)}</b><small>${plural(a.pj,'partido','partidos')}${a.avg != null ? ` · puntaje ${fmt1(a.avg)}` : ''}</small></span>${g.contact ? `<a class="btn ghost sm" style="box-shadow:none;text-decoration:none" href="${waTo(g.contact, `Hola ${g.name}! Nos falta gente para ${T.team.name} vs ${x.opponent} · ${fmtWhen(x.starts_at)}${x.venue ? ' · ' + x.venue : ''}. ¿Te prendés?`)}" target="_blank" rel="noopener">Invitar</a>` : ''}</div>`).join('')}</div></div>` : ''}
-      ${dt && cnt.voy ? `<a class="btn sm" style="margin-top:14px;text-decoration:none;width:100%" href="${wa(`⚽ CONVOCADOS · ${T.team.name} vs ${x.opponent}\n${fmtWhen(x.starts_at)}${x.venue ? ' · ' + x.venue : ''}\n\n${byAns('voy').map((o,i) => `${i+1}. ${o.m.name}`).join('\n')}\n\nSe viene. A descansar y a hidratarse.`)}" target="_blank" rel="noopener">Mandar lista de convocados</a>` : ''}
+      ${dt ? `<div class="grid2" style="margin-top:14px"><button class="btn sm" style="width:100%" id="m-gm">📲 Mensaje al grupo</button><button class="btn ghost sm" style="width:100%" id="m-paste">📋 Pegar la lista</button></div>
+        <p class="tiny muted" style="margin-top:6px">El mensaje lleva quiénes van y dos links: «Voy» y «No voy». Si arman la lista en el grupo, pegala y se carga sola.</p>` : ''}
     </div>` : ''}
 
     ${x.played && meM && meM.plays ? `<div class="section"><div class="section-title"><h2>Mis números</h2>${mine ? '<button class="link" id="m-mine">Editar</button>' : ''}</div>
@@ -1410,6 +1435,7 @@ function renderMatch(id){
       : `<button class="btn bib" id="m-mine">✍️ Cargar mis goles y asistencias</button>`}
     </div>` : ''}
 
+    ${x.played && dt ? '<button class="btn ghost section" id="m-sumwa">📲 Resumen para el grupo</button>' : ''}
     ${x.played && (vOpen || mvp.length) ? `<div class="section"><div class="section-title"><h2>Figura del partido</h2>${vOpen ? `<span class="small muted">${plural(nVotes,'voto','votos')}</span>` : ''}</div>
       ${mvp.length ? `<div class="card row"><span style="font-size:34px">⭐</span><span><b style="font-size:20px">${esc(mvp.map(m => m.name).join(' y '))}</b><br><span class="small muted">La eligió el plantel</span></span></div>`
         : `<button class="btn sky" id="m-vote">${myVote ? `Votaste a ${esc((member(myVote.voted_id) || {}).name || '')} · cambiar` : 'Votar la figura'}</button><p class="small muted" style="margin-top:6px">Cierra ${closesIn(x)}. El resultado se ve cuando cierra.</p>`}
@@ -1433,6 +1459,9 @@ function renderMatch(id){
   on('#m-mine', () => myStatsSheet(id, meId()));
   on('#m-vote', () => voteSheet(id));
   on('#m-rate', () => rateSheet(id));
+  on('#m-gm', () => groupMsgSheet('Mensaje al grupo', preMatchText(x)));
+  on('#m-paste', () => pasteCallupSheet(id));
+  on('#m-sumwa', () => groupMsgSheet('Resumen para el grupo', postMatchText(x), () => LS.set('casaca_sum_' + id, '1')));
   on('#m-del', () => confirmSheet('¿Borrar el partido?', `Se borra vs ${esc(x.opponent)} con su convocatoria, la planilla y los votos.`, 'Borrar', async () => {
     try { await rpc('fc_match_delete', { ...P(), p_match: id }); closeSheet(); S.matchId = null; await refresh(); toast('Partido borrado'); } catch(e){ toast(e.message); }
   }));
@@ -1680,6 +1709,122 @@ function guestSheet(matchId){
     catch(err){ toast(err.message); }
   };
 }
+/* ============ Mensajes para el grupo de WhatsApp ============ */
+function rsvpLink(x, a){
+  const c = S.T.team.code, base = /vercel\.app$/.test(location.hostname) ? `${location.origin}/i/${c}?` : `${BASE}?e=${c}&`;
+  return `${base}r=${a}&p=${x.id.slice(0, 8)}`;
+}
+function rivalLine(x){
+  const lm = LG() && lgMatchOf(x); if (!lm) return '';
+  const rid = isUs(lm.home_id) ? lm.away_id : lm.home_id, t = lgTeam(rid); if (!t) return '';
+  const f = lgForm(rid).map(z => ({ G: '🟢', E: '🟡', P: '🔴' }[z.r])).join('');
+  return `🔎 ${t.name}: ${t.pos ? `${t.pos}º con ${t.pts} pts` : ''}${f ? ` · últimos ${f}` : ''}`;
+}
+function preMatchText(x){
+  const T = S.T, cs = T.callups.filter(c => c.match_id === x.id);
+  const by = (a) => cs.filter(c => c.answer === a).map(c => member(c.member_id)).filter(Boolean).map(m => m.name);
+  const faltan = players().filter(m => m.status === 'ok' && !cs.some(c => c.member_id === m.id)).map(m => m.name);
+  const voy = by('voy'), duda = by('duda'), no = by('no_voy');
+  return [`⚽ *${T.team.name} vs ${x.opponent}*`,
+    `📅 ${fmtWhen(x.starts_at)}${x.venue ? ` · 📍 ${x.venue}` : ''}`,
+    rivalLine(x), '',
+    `✅ Van (${voy.length}): ${voy.join(', ') || '—'}`,
+    duda.length ? `🤔 Dudan: ${duda.join(', ')}` : '',
+    no.length ? `❌ No van: ${no.join(', ')}` : '',
+    faltan.length ? `⏳ Faltan responder (${faltan.length}): ${faltan.join(', ')}` : '', '',
+    `Respondé con un toque:`,
+    `👍 Voy → ${rsvpLink(x, 'voy')}`,
+    `🙅 No voy → ${rsvpLink(x, 'no')}`].filter((l, i, a) => l !== '' || (a[i - 1] !== '' && i > 0)).join('\n');
+}
+function postMatchText(x){
+  const T = S.T, st = T.stats.filter(z => z.match_id === x.id && z.played);
+  const gs = st.filter(z => z.goals > 0).map(z => ({ m: member(z.member_id), g: z.goals })).filter(o => o.m).sort((a, b) => b.g - a.g);
+  const mvp = mvpOf(x).map(member).filter(Boolean);
+  const best = T.team.ratings_public ? st.filter(z => z.dt_rating != null).sort((a, b) => b.dt_rating - a.dt_rating)[0] : null;
+  const us = LG() && LG().standings.find(z => isUs(z.id)), nx = nextMatch();
+  const res = { G: '¡Ganamos!', E: 'Empatamos', P: 'Perdimos' }[wdl(x)] || '';
+  return [`🏁 *${T.team.name} ${x.goals_for ?? ''}-${x.goals_against ?? ''} ${x.opponent}* ${res}`,
+    gs.length ? `⚽ Goles: ${gs.map(o => o.m.name + (o.g > 1 ? ` x${o.g}` : '')).join(', ')}` : '',
+    mvp.length ? `⭐ Figura: ${mvp.map(m => m.name).join(' y ')}` : best && member(best.member_id) ? `⭐ Mejor puntaje: ${member(best.member_id).name} (${fmt1(+best.dt_rating)})` : '',
+    us ? `📊 Estamos ${us.pos}º con ${us.pts} pts` : '',
+    nx ? `⏭️ Próximo: vs ${nx.opponent} · ${fmtWhen(nx.starts_at)}` : '',
+    '', votingOpen(x) ? `⭐ Votá la figura y mirá los puntajes en la app 👇` : `📲 Puntajes y estadísticas en la app 👇`,
+    inviteLink(T.team.code)].filter((l, i) => l !== '' || i > 0).join('\n');
+}
+function groupMsgSheet(title, text, onSent, sub = 'Así queda. Mandalo al grupo: cada uno responde con un toque.'){
+  const el = openSheet(`<h2>${title}</h2><p class="muted">${sub}</p>
+    <div class="card section" style="white-space:pre-wrap;font-size:15px;line-height:1.45;overflow-wrap:anywhere">${esc(text).replace(/\*([^*\n]+)\*/g, '<b>$1</b>')}</div>
+    <div class="grid2 section"><a class="btn" style="width:100%;text-decoration:none" id="gm-wa" href="${wa(text)}" target="_blank" rel="noopener">WhatsApp</a><button class="btn ghost" style="width:100%" id="gm-copy">Copiar</button></div>`);
+  $('#gm-wa', el).addEventListener('click', () => onSent && onSent());
+  $('#gm-copy', el).onclick = async () => { if (await copy(text)){ toast('Copiado. Pegalo en el grupo.'); onSent && onSent(); } else toast('No se pudo copiar'); };
+}
+
+// La lista que arman en el grupo ("1. Bauto 2. Palme… No van: Joaco") pasa a la convocatoria
+const CALL_HEAD = [['no_voy', /^(no (van|voy|vienen|pueden|juegan)|bajas?|ausentes|afuera|no)$/], ['duda', /^(en )?(duda|dudas|dudosos|tal vez|quizas)$/], ['voy', /^(van|voy|vienen|confirmados|titulares|lista|convocados|anotados)$/]];
+function parseCallupLines(txt){
+  let sec = 'voy'; const out = [];
+  String(txt || '').split(/\n/).forEach(raw => {
+    let l = raw.replace(/[⁠​-‏﻿*_~]/g, '').trim(); if (!l) return;
+    const bare = normTxt(l).replace(/[^a-z ]/g, ' ').replace(/\s+/g, ' ').trim();
+    const h = CALL_HEAD.find(([, re]) => re.test(bare.replace(/ \d+$/, '')));
+    if (h && (/:\s*$/.test(l) || bare.split(' ').length <= 3) && !/^\d/.test(l)){ sec = h[0]; return; }
+    if (/:\s*$/.test(l)) return;
+    let a = sec;
+    if (/❌|🙅|👎|⛔|\(no\)|\bno va\b|\bno voy\b|\bbaja\b/i.test(l)) a = 'no_voy';
+    else if (/❓|🤔|\?|\(duda\)|\bduda\b/i.test(l)) a = 'duda';
+    else if (/✅|👍|✔/.test(l)) a = 'voy';
+    const name = l.replace(/^\s*[-–•·]\s*/, '').replace(/^\s*\d{1,2}\s*[.)\-–:]?\s*/, '').replace(/\([^)]*\)/g, ' ').replace(/\+\s*\d+/g, ' ')
+      .replace(/\b(no va|no voy|baja|duda|va|voy)\b/gi, ' ').replace(/[^\p{L}\p{N} .'-]/gu, ' ').replace(/\s+/g, ' ').trim();
+    if (!name || name.split(' ').length > 4) return;
+    out.push({ line: l, name, a });
+  });
+  return out;
+}
+function pasteCallupSheet(matchId){
+  const x = S.T.matches.find(y => y.id === matchId);
+  const el = openSheet(`<h2>Pegar la lista del grupo</h2><p class="muted">vs ${esc(x.opponent)} · Copiá la lista que armaron en WhatsApp y pegala acá. Si tiene partes como «No van:» o «Dudas:», también las entiende.</p>
+    <textarea class="input section" id="pc-t" rows="9" placeholder="1. Bauto&#10;2. Palme&#10;3. Nic ✅&#10;No van: Joaco"></textarea>
+    <button class="btn section" id="pc-go">Leer la lista</button>`);
+  $('#pc-go', el).onclick = () => {
+    const rows = parseCallupLines($('#pc-t', el).value);
+    if (!rows.length) return toast('No encontré nombres. Un jugador por línea.', 3500);
+    closeSheet(); setTimeout(() => pasteCallupReview(matchId, rows), 80);
+  };
+}
+function pasteCallupReview(matchId, rows){
+  const pool = [...players(), ...guests()].sort((a, b) => a.name.localeCompare(b.name));
+  const seen = new Set();
+  rows.forEach(r => { const m = matchMember(r.name, pool); r.pick = m && !seen.has(m.id) ? m.id : '__skip'; r.auto = !!m; if (m) seen.add(m.id); });
+  const cur = (id) => (S.T.callups.find(c => c.match_id === matchId && c.member_id === id) || {}).answer;
+  const AN = [['voy', 'Va'], ['duda', 'Duda'], ['no_voy', 'No va']];
+  const opts = (r) => `<option value="__skip">No cargar</option>${pool.map(m => `<option value="${m.id}" ${m.id === r.pick ? 'selected' : ''}>${esc(m.name)}${m.guest ? ' (invitado)' : ''}</option>`).join('')}`;
+  const unknown = rows.filter(r => !r.auto).length;
+  const el = openSheet(`<h2>Revisá antes de guardar</h2><p class="muted">${rows.length - unknown} reconocidos${unknown ? ` · ${unknown} sin reconocer (quedan en «No cargar», elegí si es alguien)` : ''}.</p>
+    <div class="card section" style="padding:0 12px" id="pcv">${rows.map((r, i) => `<div class="dtrow" style="grid-template-columns:minmax(0,1fr)">
+      <div style="min-width:0"><div class="small muted ell">«${esc(r.line)}»</div>
+        <div class="row" style="gap:6px;margin-top:4px"><select class="input" data-i="${i}" style="min-height:40px;flex:1;min-width:0;${r.auto ? '' : 'border-color:var(--gold)'}">${opts(r)}</select>
+        <span class="seg mini-seg" data-s="${i}">${AN.map(([k, l]) => `<button type="button" data-a="${k}" class="${r.a === k ? 'on' : ''}">${l}</button>`).join('')}</span></div></div></div>`).join('')}</div>
+    <button class="btn section" id="pcv-ok">Guardar</button>`);
+  $$('#pcv select', el).forEach(sel => sel.onchange = () => { rows[+sel.dataset.i].pick = sel.value; sel.style.borderColor = ''; });
+  $$('#pcv [data-s]', el).forEach(sg => $$('button', sg).forEach(b => b.onclick = () => { rows[+sg.dataset.s].a = b.dataset.a; $$('button', sg).forEach(z => z.classList.toggle('on', z === b)); }));
+  $('#pcv-ok', el).onclick = async () => {
+    const todo = rows.filter(r => r.pick !== '__skip');
+    if (!todo.length) return toast('No elegiste a nadie');
+    const b = $('#pcv-ok', el); b.disabled = true; b.textContent = 'Guardando…';
+    const al = aliases(), n = { voy: 0, duda: 0, no_voy: 0 };
+    try {
+      for (const r of todo){
+        if (!r.auto) al[normTxt(r.name).replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim()] = r.pick;
+        if (cur(r.pick) !== r.a) await rpc('fc_rsvp', { ...P(), p_match: matchId, p_answer: r.a, p_reason: null, p_member: r.pick });
+        n[r.a]++;
+      }
+      LS.set(aliasKey(), JSON.stringify(al));
+      closeSheet(); await refresh();
+      toast(`Listo: ${n.voy} van${n.duda ? `, ${n.duda} dudan` : ''}${n.no_voy ? `, ${n.no_voy} no van` : ''}`, 3200);
+    } catch(e){ toast(e.message, 3500); b.disabled = false; b.textContent = 'Guardar'; }
+  };
+}
+
 function voteSheet(matchId){
   const x = S.T.matches.find(y => y.id === matchId);
   const myVote = S.T.votes.find(v => v.match_id === matchId && v.mine);
@@ -3652,14 +3797,25 @@ async function pushDisable(){
   try { const sub = await pushSub(); if (sub){ await rpc('fc_push_unsubscribe', { ...P(), p_endpoint: sub.endpoint }).catch(() => {}); await sub.unsubscribe(); } } catch(e){}
   S.push = 'off'; toast('Avisos apagados'); render();
 }
+const inAppIOS = () => isIOS && !/Safari\//.test(navigator.userAgent) && !/CriOS|FxiOS|EdgiOS/.test(navigator.userAgent);
+window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); S.installEvt = e; if (S.T && S.tab === 'inicio' && !document.querySelector('.sheet')) render(); });
+const SHARE_ICO = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-3px"><path d="M12 3v12M7 8l5-5 5 5"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg>';
+function iosStepsHTML(){
+  if (inAppIOS()) return `<ol class="steps"><li>Tocá <b>···</b> o el ícono de la brújula y elegí <b>Abrir en Safari</b>.</li><li>En Safari, tocá <b>Compartir</b> ${SHARE_ICO} abajo.</li><li>Bajá y tocá <b>Agregar a inicio</b>.</li><li>Abrí La Casaca desde el ícono nuevo y activá los avisos.</li></ol>`;
+  return `<ol class="steps"><li>Tocá <b>Compartir</b> ${SHARE_ICO} abajo de todo.</li><li>Bajá y tocá <b>Agregar a inicio</b>.</li><li>Abrí La Casaca desde el ícono nuevo y tocá <b>Activar</b> en los avisos.</li></ol>`;
+}
 function pushCardHTML(){
+  if (S.installEvt && !standalone() && !LS.get('casaca_inst_no')) return `<div class="card section" style="border-color:var(--grass)"><h3>📲 Instalá La Casaca</h3><p class="muted small" style="margin:4px 0 12px">Queda como una app en tu celu: la abrís con un toque y te llegan los avisos del partido.</p>
+    <div class="grid2"><button class="btn sm" style="width:100%" id="in-go">Instalar</button><button class="btn ghost sm" style="width:100%" id="in-no">Ahora no</button></div></div>`;
   if (LS.get('casaca_push_no') || !['off', 'ios'].includes(S.push)) return '';
   return S.push === 'ios'
-    ? `<div class="card section"><h3>📲 Instalá la app para recibir avisos</h3><p class="muted small" style="margin:4px 0 10px">En iPhone los avisos llegan solo con la app instalada: tocá <b>Compartir</b> ⬆️ abajo y después <b>Agregar a inicio</b>. Abrila desde ese ícono y activá los avisos.</p><button class="link muted" id="ps-no">Entendido</button></div>`
+    ? `<div class="card section" style="border-color:var(--grass)"><h3>📲 Instalala para que te avise</h3><p class="muted small" style="margin:4px 0 8px">En iPhone los avisos llegan solo con la app en la pantalla de inicio. Son 3 pasos:</p>${iosStepsHTML()}<button class="link muted" id="ps-no" style="margin-top:6px">Ya está / ahora no</button></div>`
     : `<div class="card section" style="border-color:var(--grass)"><h3>🔔 Activá los avisos</h3><p class="muted small" style="margin:4px 0 12px">Te avisa cuando faltan jugadores para el partido, cuando el DT manda un entrenamiento, cuando alguien ya lo hizo y cuando hay que cargar el partido.</p>
       <div class="grid2"><button class="btn sm" style="width:100%" id="ps-on">Activar</button><button class="btn ghost sm" style="width:100%" id="ps-no">Ahora no</button></div></div>`;
 }
 function bindPushCard(root){
+  const ig = $('#in-go', root); if (ig) ig.onclick = async () => { const e = S.installEvt; S.installEvt = null; try { e.prompt(); const r = await e.userChoice; if (r.outcome === 'accepted') toast('¡Listo! Ya la tenés en el celu'); } catch(_){} render(); };
+  const ino = $('#in-no', root); if (ino) ino.onclick = () => { LS.set('casaca_inst_no', '1'); render(); };
   const on = $('#ps-on', root); if (on) on.onclick = pushEnable;
   const no = $('#ps-no', root); if (no) no.onclick = () => { LS.set('casaca_push_no', '1'); render(); };
 }
@@ -3672,7 +3828,7 @@ function profileSheet(){
       ${m.plays ? '<button class="btn ghost" id="pf-card">🃏 Mi carta</button><button class="btn ghost" id="pf-st">' + STATUS[m.status][0] + ' Mi estado: ' + STATUS[m.status][1] + '</button>' : ''}
       ${dt ? '<button class="btn ghost" id="pf-set">⚙️ Ajustes del equipo</button>' : ''}
       <button class="btn ghost" id="pf-inv">📲 Invitar al equipo</button>
-      ${S.push === 'on' ? '<button class="btn ghost" id="pf-push">🔔 Avisos activados · apagar</button>' : S.push === 'off' ? '<button class="btn ghost" id="pf-push">🔕 Activar avisos al celu</button>' : S.push === 'ios' ? '<p class="small muted">📲 Para recibir avisos en iPhone, instalá la app: Compartir ⬆️ → Agregar a inicio.</p>' : S.push === 'denied' ? '<p class="small muted">🔕 Los avisos están bloqueados para esta página. Se activan desde los ajustes del navegador.</p>' : ''}
+      ${S.push === 'on' ? '<button class="btn ghost" id="pf-push">🔔 Avisos activados · apagar</button>' : S.push === 'off' ? '<button class="btn ghost" id="pf-push">🔕 Activar avisos al celu</button>' : S.push === 'ios' ? `<div class="card"><b>📲 Para recibir avisos en iPhone</b>${iosStepsHTML()}</div>` : S.push === 'denied' ? '<p class="small muted">🔕 Los avisos están bloqueados para esta página. Se activan desde los ajustes del navegador.</p>' : ''}
       ${!S.me.user.has_pin ? '<div class="card"><b>Entraste con un toque desde este celu</b><p class="small muted" style="margin:2px 0 10px">Si querés entrar desde otro celu o no perder el acceso, creá tu usuario: un apodo y un PIN de 4 números.</p><button class="btn sm" id="pf-pin" style="width:100%">Crear mi usuario</button></div>' : ''}
     </div>
     ${S.demo ? '' : `<div class="card section" style="border-color:#FF7A1A"><b>🔥 Fueguitos</b><p class="muted small" style="margin:4px 0 10px">Tus hábitos con racha: dormir, hidratarte, entrenar. Es la misma cuenta, entrás directo.</p>

@@ -19,9 +19,12 @@ module.exports = async (req, res) => {
     } catch (e) {}
   }
   const host = 'https://' + (req.headers['x-forwarded-host'] || req.headers.host || 'lacasacadt.vercel.app');
-  const to = '/' + (code ? '?e=' + code : '');
-  const title = t ? `${t.emoji || '⚽'} Sumate a ${t.name}${t.staff ? ' (cuerpo técnico)' : ''}` : 'Sumate al equipo en La Casaca';
-  const desc = t && t.staff
+  // Links de "Voy / No voy" del mensaje al grupo: ?r=voy|no|duda&p=partido
+  const r = ['voy', 'no', 'duda'].includes(req.query && req.query.r) ? req.query.r : '';
+  const pm = String((req.query && req.query.p) || '').replace(/[^0-9a-f]/gi, '').slice(0, 12);
+  const to = '/' + (code ? '?e=' + code + (r ? '&r=' + r + (pm ? '&p=' + pm : '') : '') : '');
+  const title = r && t ? `${t.emoji || '⚽'} ${t.name}: ¿venís al partido?` : t ? `${t.emoji || '⚽'} Sumate a ${t.name}${t.staff ? ' (cuerpo técnico)' : ''}` : 'Sumate al equipo en La Casaca';
+  const desc = r ? 'Tocá tu respuesta y quedás anotado en la convocatoria. La primera vez, elegí tu nombre.' : t && t.staff
     ? 'Entrás como cuerpo técnico: convocatoria, pizarra, puntajes y entrenamientos del plantel.'
     : 'Entrá, tocá tu nombre en el plantel y listo. Confirmás si vas, ves la pizarra, tus goles y la tabla del torneo.';
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
