@@ -3160,14 +3160,103 @@ function rivalSheet(id){
       </tbody></table></div><p class="tiny muted" style="margin-top:6px">Cómo le fue a cada uno contra los mismos equipos.</p></div>` : ''}
     ${views.length ? `<div class="section"><div class="section-title"><h2>Sus partidos</h2>${big ? `<span class="small muted">${plural(big, 'goleada', 'goleadas')} a favor</span>` : ''}</div><div class="list">${views.map(v => `<button class="lrow" data-lm="${v.m.id}" style="padding:9px 12px"><span class="t"><b>vs ${esc(v.opp)}</b><small>${esc(fechaLbl(v.m.fecha))}${v.m.sheet ? ' · ver planilla' : ''}</small></span><span class="rate ${scoreCls(v)}" style="font-size:18px">${v.gf}-${v.gc}</span></button>`).join('')}</div></div>` : '<p class="muted small section">Todavía no jugó partidos en el torneo.</p>'}
     ${played.length && !withSheet ? '<p class="tiny muted section">Las planillas de los partidos se están cargando: en un rato aparecen goleadores y tarjetas.</p>' : ''}
-    <div class="grid2 section"><a class="btn sm" style="width:100%;text-decoration:none" href="${wa(rivalText(id))}" target="_blank" rel="noopener">📲 Mandar al grupo</a><button class="btn ghost sm" style="width:100%" id="rv-copy">Copiar informe</button></div>`);
+    <button class="btn section" id="rv-img">📸 Compartir como imagen</button>
+    <div class="grid2" style="margin-top:8px"><a class="btn ghost sm" style="width:100%;text-decoration:none" href="${wa(rivalText(id))}" target="_blank" rel="noopener">📲 Mandar como texto</a><button class="btn ghost sm" style="width:100%" id="rv-copy">Copiar texto</button></div>`);
+  $('#rv-img', el).onclick = async () => { const b = $('#rv-img', el); b.disabled = true; try { await shareRival(id); } catch(e){ toast('No se pudo armar la imagen'); } b.disabled = false; };
   $$('[data-lm]', el).forEach(b => b.onclick = () => { closeSheet(); setTimeout(() => matchSummarySheet(b.dataset.lm), 80); });
   $('#rv-copy', el).onclick = async () => { (await copy(rivalText(id))) ? toast('Informe copiado. Pegalo en el grupo.') : toast('No se pudo copiar'); };
+}
+// Suspendidos y rojas en su último partido
+function rivalOut(id){
+  const L = LG(), last = lgPlayed(id).slice(-1)[0];
+  const out = (L.suspended || []).filter(x => x.team_id === id).map(x => ({ n: x.name, why: `suspendido ${plural(x.fechas, 'fecha', 'fechas')}` }));
+  if (last) lgView(last, id).own.filter(p => p.ro).forEach(p => { if (!out.some(r => r.n === p.n)) out.push({ n: p.n, why: `roja en la ${fechaLbl(last.fecha)}` }); });
+  return out;
+}
+// El informe del rival como imagen para el grupo (1080 de ancho, el alto según lo que haya)
+async function shareRival(id){
+  const L = LG(), t = lgTeam(id), me = L.team_ext_id, us = L.standings.find(x => isUs(x.id)), name = S.T.team.name;
+  const e = !isUs(id) && lgExpect(us, t), sq = lgSquad(id), out = rivalOut(id);
+  const sc = sq.filter(p => p.g).sort((a, b) => b.g - a.g || a.pj - b.pj).slice(0, 4);
+  const fg = sq.filter(p => p.fig).sort((a, b) => b.fig - a.fig).slice(0, 3);
+  const ourBy = {}; lgPlayed(me).forEach(m => { const v = lgView(m, me); ourBy[v.oppId] = v; });
+  const common = lgPlayed(id).map(m => lgView(m, id)).filter(v => v.oppId !== me && ourBy[v.oppId]).slice(0, 5);
+  const nx0 = nextMatch(), lm0 = nx0 && lgMatchOf(nx0), nx = lm0 && (lm0.home_id === id || lm0.away_id === id) ? nx0 : null;
+  try { await document.fonts.ready; } catch(_){}
+  const W = 1080, P = 70, c = document.createElement('canvas'); c.width = W; c.height = 3000; const g = c.getContext('2d');
+  const BG = '#0B2417', CARD = '#123222', INK = '#fff', MUTED = 'rgba(255,255,255,.65)', GR = '#23A658', GOLD = '#F5B82E', RED = '#E5484D';
+  const D = '"Big Shoulders Display", sans-serif', A = '"Archivo", sans-serif';
+  g.fillStyle = BG; g.fillRect(0, 0, W, c.height);
+  const txt = (s, x, y, font, color = INK, align = 'left') => { g.font = font; g.fillStyle = color; g.textAlign = align; g.fillText(s, x, y); };
+  const fit = (s, max, font) => { g.font = font; if (g.measureText(s).width <= max) return s; while (s.length > 1 && g.measureText(s + '…').width > max) s = s.slice(0, -1); return s + '…'; };
+  const box = (y, h) => { g.fillStyle = CARD; g.beginPath(); g.roundRect(P, y, W - P*2, h, 28); g.fill(); };
+  const title = (s, y) => txt(s.toUpperCase(), P + 34, y, `800 26px ${A}`, MUTED);
+  let y = 110;
+  txt('INFORME DEL RIVAL', W/2, y, `800 30px ${A}`, GOLD, 'center'); y += 112;
+  txt(fit(t.name.toUpperCase(), W - P*2, `900 92px ${D}`), W/2, y, `900 92px ${D}`, INK, 'center'); y += 56;
+  txt(`${t.pos ? `${t.pos}º · ${t.pts} pts · ` : ''}${t.pg}G ${t.pe}E ${t.pp}P · ${t.gf} a favor, ${t.gc} en contra`, W/2, y, `600 32px ${A}`, MUTED, 'center'); y += 34;
+  if (nx) { y += 14; txt(`vs ${name} · ${fmtWhen(nx.starts_at)}`, W/2, y + 20, `700 30px ${A}`, MUTED, 'center'); y += 34; }
+  const form = lgForm(id);
+  if (form.length){ y += 30; const r = 22, gap = 16, w0 = form.length * (r*2) + (form.length - 1) * gap; let x = W/2 - w0/2 + r;
+    form.forEach(f => { g.beginPath(); g.arc(x, y + r, r, 0, Math.PI*2); g.fillStyle = { G: GR, E: GOLD, P: RED }[f.r]; g.fill(); txt(f.r, x, y + r + 10, `900 26px ${A}`, BG, 'center'); x += r*2 + gap; });
+    y += r*2; }
+  y += 50;
+  if (e){
+    box(y, 300); title('Partido esperado', y + 56);
+    txt(fit(name, 330, `800 34px ${A}`), P + 34, y + 140, `800 34px ${A}`);
+    txt(fit(t.name, 330, `800 34px ${A}`), W - P - 34, y + 140, `800 34px ${A}`, INK, 'right');
+    txt(`${fmt1(e.a)} - ${fmt1(e.b)}`, W/2, y + 150, `900 76px ${D}`, INK, 'center');
+    const bx = P + 34, bw = W - P*2 - 68, by = y + 188; let x = bx;
+    g.save(); g.beginPath(); g.roundRect(bx, by, bw, 22, 11); g.clip();
+    [[e.w, GR], [e.d, GOLD], [e.l, RED]].forEach(([v, col]) => { g.fillStyle = col; g.fillRect(x, by, bw * v + 1, 22); x += bw * v; }); g.restore();
+    txt(`Ganar ${pct(e.w)}`, bx, y + 262, `800 30px ${A}`, INK);
+    txt(`Empate ${pct(e.d)}`, W/2, y + 262, `800 30px ${A}`, INK, 'center');
+    txt(`Perder ${pct(e.l)}`, bx + bw, y + 262, `800 30px ${A}`, INK, 'right');
+    y += 330;
+  }
+  if (out.length){
+    const h = 90 + out.length * 50; g.fillStyle = 'rgba(229,72,77,.18)'; g.beginPath(); g.roundRect(P, y, W - P*2, h, 28); g.fill();
+    txt('CHEQUEÁ QUE NO JUEGUEN', P + 34, y + 56, `800 26px ${A}`, '#FF8A8D');
+    out.forEach((r, i) => txt(fit(`🟥 ${shortName(r.n)} · ${r.why}`, W - P*2 - 68, `700 32px ${A}`), P + 34, y + 110 + i * 50, `700 32px ${A}`));
+    y += h + 30;
+  }
+  const list = (label, rows, unit) => {
+    if (!rows.length) return; const h = 90 + rows.length * 62; box(y, h); title(label, y + 56);
+    rows.forEach((p, i) => { const ry = y + 116 + i * 62;
+      txt(fit(`${p.nro != null ? '#' + p.nro + '  ' : ''}${shortName(p.n)}`, 620, `700 34px ${A}`), P + 34, ry, `700 34px ${A}`);
+      txt(String(p[unit]), W - P - 34, ry + 4, `900 48px ${D}`, unit === 'g' ? INK : GOLD, 'right'); });
+    y += h + 30;
+  };
+  list('⚽ Sus goleadores', sc, 'g');
+  list('⭐ Sus figuras', fg, 'fig');
+  if (common.length){
+    const h = 140 + common.length * 60; box(y, h); title('Rivales en común', y + 56);
+    const c1 = W - P - 330, c2 = W - P - 110;
+    txt(fit(name, 200, `700 24px ${A}`), c1, y + 100, `700 24px ${A}`, MUTED, 'center');
+    txt(fit(t.name, 200, `700 24px ${A}`), c2, y + 100, `700 24px ${A}`, MUTED, 'center');
+    const col = (v) => ({ G: GR, E: GOLD, P: RED }[lgRes(v)]);
+    common.forEach((v, i) => { const ry = y + 158 + i * 60, u = ourBy[v.oppId];
+      txt(fit(v.opp, 440, `700 32px ${A}`), P + 34, ry, `700 32px ${A}`);
+      [[c1, u], [c2, v]].forEach(([cx, r]) => { g.fillStyle = col(r); g.beginPath(); g.roundRect(cx - 62, ry - 36, 124, 48, 12); g.fill(); txt(`${r.gf}-${r.gc}`, cx, ry, `900 34px ${D}`, BG, 'center'); }); });
+    const pts = (v) => v.gf > v.gc ? 3 : v.gf === v.gc ? 1 : 0;
+    y += h + 10;
+    txt(`Contra esos equipos sacamos ${common.reduce((a, v) => a + pts(ourBy[v.oppId]), 0)} puntos y ellos ${common.reduce((a, v) => a + pts(v), 0)}.`, W/2, y + 20, `600 28px ${A}`, MUTED, 'center');
+    y += 50;
+  }
+  y += 40; txt(`Armado en La Casaca · ${name}`, W/2, y, `600 28px ${A}`, 'rgba(255,255,255,.5)', 'center'); y += 50;
+  const o = document.createElement('canvas'); o.width = W; o.height = y; o.getContext('2d').drawImage(c, 0, 0);
+  const blob = await new Promise(r => o.toBlob(r, 'image/png'));
+  const file = new File([blob], `rival-${t.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}.png`, { type: 'image/png' });
+  try {
+    if (navigator.canShare && navigator.canShare({ files: [file] })){ await navigator.share({ files: [file], text: rivalText(id) }); return; }
+  } catch(err){ if (err.name === 'AbortError') return; }
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = file.name; a.click();
+  toast('Imagen descargada. Mandala al grupo.');
 }
 function rivalText(id){
   const L = LG(), t = lgTeam(id), us = L.standings.find(s => isUs(s.id)), sq = lgSquad(id), me = L.team_ext_id;
   const e = !isUs(id) && lgExpect(us, t);
-  const susp = (L.suspended || []).filter(s => s.team_id === id);
+  const susp = rivalOut(id);
   const sc = sq.filter(p => p.g).sort((a,b) => b.g - a.g).slice(0, 4), fg = sq.filter(p => p.fig).sort((a,b) => b.fig - a.fig).slice(0, 2);
   const cd = sq.filter(p => p.am >= 2 || p.ro || p.az).sort((a,b) => (b.ro * 3 + b.az * 2 + b.am) - (a.ro * 3 + a.az * 2 + a.am)).slice(0, 3);
   const ourBy = {}; lgPlayed(me).forEach(m => { const v = lgView(m, me); ourBy[v.oppId] = v; });
@@ -3178,7 +3267,7 @@ function rivalText(id){
     sc.length ? `⚽ Goleadores: ${sc.map(p => `${shortName(p.n)} ${p.g}`).join(', ')}` : '',
     fg.length ? `⭐ Figuras: ${fg.map(p => `${shortName(p.n)} ${p.fig}`).join(', ')}` : '',
     cd.length ? `🟨 Con tarjetas: ${cd.map(p => `${shortName(p.n)} (${[p.am ? p.am + ' am.' : '', p.az ? p.az + ' az.' : '', p.ro ? p.ro + ' roja' : ''].filter(Boolean).join(', ')})`).join(', ')}` : '',
-    susp.length ? `🟥 No juegan: ${susp.map(s => `${shortName(s.name)} (${plural(s.fechas, 'fecha', 'fechas')})`).join(', ')}` : '',
+    susp.length ? `🟥 Chequear que no jueguen: ${susp.map(s => `${shortName(s.n)} (${s.why})`).join(', ')}` : '',
     common.length ? `🆚 Rivales en común: ${common.map(v => `${v.opp} (nosotros ${ourBy[v.oppId].gf}-${ourBy[v.oppId].gc}, ellos ${v.gf}-${v.gc})`).join('; ')}` : '',
     e ? `🔮 Partido esperado: ${S.T.team.name} ${fmt1(e.a)} - ${fmt1(e.b)} · ganar ${pct(e.w)}, empate ${pct(e.d)}, perder ${pct(e.l)}` : ''];
   return lines.filter(Boolean).join('\n');
